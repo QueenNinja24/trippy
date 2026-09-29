@@ -1,0 +1,1323 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trippy - Group Trip Expense Manager</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eef2ff',
+                            100: '#e0e7ff',
+                            500: '#6366f1',
+                            600: '#4f46e5',
+                            700: '#4338ca',
+                        },
+                        coral: {
+                            500: '#ff6b6b',
+                            600: '#ee5253',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: 'Plus Jakarta Sans', sans-serif; }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #f1f5f9; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 flex flex-col">
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, doc, setDoc, addDoc, updateDoc, deleteDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Firebase Configuration & Globals
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'tripsplit-demo-app-123';
+        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+
+        let app, db, auth;
+        let currentUser = null;
+        let membersMap = {}; 
+        let membersList = [];
+        let expensesList = [];
+        let settlementsList = [];
+        let categoriesList = ['Flights', 'Hotels', 'Cabs', 'Experiences', 'Food', 'Miscellaneous'];
+        let activityList = [];
+        let currentCurrency = '$';
+        let categoryChartInstance = null;
+        let individualChartInstance = null;
+
+        try {
+            if (Object.keys(firebaseConfig).length > 0) {
+                app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+                initAuth();
+            } else {
+                console.warn("Firebase config is empty. Running in local mock mode.");
+                initMockMode();
+            }
+        } catch (err) {
+            console.error("Firebase init error:", err);
+            initMockMode();
+        }
+
+        async function initAuth() {
+            try {
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+                onAuthStateChanged(auth, (user) => {
+                    currentUser = user;
+                    if (user) {
+                        updateAuthStatusDisplay();
+                        setupFirestoreListeners();
+                        checkUserProfile();
+                    }
+                });
+            } catch (e) {
+                console.error("Auth error:", e);
+                initMockMode();
+            }
+        }
+
+        function updateAuthStatusDisplay() {
+            const myProfile = membersMap[currentUser?.uid];
+            const statusEl = document.getElementById('auth-status');
+            if (statusEl) {
+                if (myProfile && myProfile.name) {
+                    statusEl.innerText = `Connected as ${myProfile.name} 🎒`;
+                } else {
+                    statusEl.innerText = `Connected (Live Sync Active) 🎒`;
+                }
+            }
+        }
+
+        function initMockMode() {
+            currentUser = { uid: 'mock-user-' + Math.random().toString(36).substring(2,7) };
+            document.getElementById('auth-status').innerText = "Offline Mode (Local) 🎒";
+            membersList = [
+                { uid: 'user1', name: 'Alice Smith', email: 'alice@trippy.co' },
+                { uid: 'user2', name: 'Bob Jones', email: 'bob@trippy.co' },
+                { uid: 'user3', name: 'Charlie Brown', email: 'charlie@trippy.co' }
+            ];
+            membersMap = { user1: membersList[0], user2: membersList[1], user3: membersList[2] };
+            expensesList = [
+                { id: 'e1', title: 'Flight tickets', amount: 600, currency: '$', category: 'Flights', payerId: 'user1', splitType: 'equal', participants: ['user1', 'user2', 'user3'], timestamp: Date.now() - 86400000*3 },
+                { id: 'e2', title: 'Hotel 3 nights', amount: 450, currency: '$', category: 'Hotels', payerId: 'user2', splitType: 'equal', participants: ['user1', 'user2', 'user3'], timestamp: Date.now() - 86400000*2 },
+                { id: 'e3', title: 'Dinner at Beachside', amount: 120, currency: '$', category: 'Food', payerId: 'user3', splitType: 'equal', participants: ['user1', 'user2', 'user3'], timestamp: Date.now() - 86400000 }
+            ];
+            settlementsList = [];
+            activityList = [{ id: 'a1', text: 'Alice created Trippy workspace', time: Date.now() - 86400000*4 }];
+            initializeAppUI();
+        }
+
+        function setupFirestoreListeners() {
+            if (!db || !currentUser) return;
+
+            onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'members'), (snapshot) => {
+                membersList = [];
+                membersMap = {};
+                snapshot.forEach(docSnap => {
+                    const data = { id: docSnap.id, ...docSnap.data() };
+                    membersList.push(data);
+                    membersMap[data.uid || data.id] = data;
+                });
+                initializeAppUI();
+            }, (err) => console.error("Members error:", err));
+
+            onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'expenses'), (snapshot) => {
+                expensesList = [];
+                snapshot.forEach(docSnap => {
+                    expensesList.push({ id: docSnap.id, ...docSnap.data() });
+                });
+                initializeAppUI();
+            }, (err) => console.error("Expenses error:", err));
+
+            onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'settlements'), (snapshot) => {
+                settlementsList = [];
+                snapshot.forEach(docSnap => {
+                    settlementsList.push({ id: docSnap.id, ...docSnap.data() });
+                });
+                initializeAppUI();
+            }, (err) => console.error("Settlements error:", err));
+
+            onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'categories'), (snapshot) => {
+                const customCats = [];
+                snapshot.forEach(docSnap => {
+                    if (docSnap.data().name) customCats.push(docSnap.data().name);
+                });
+                if (customCats.length > 0) {
+                    const baseCats = ['Flights', 'Hotels', 'Cabs', 'Experiences', 'Food', 'Miscellaneous'];
+                    categoriesList = Array.from(new Set([...baseCats, ...customCats]));
+                }
+                initializeAppUI();
+            }, (err) => console.error("Categories error:", err));
+
+            onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'activity'), (snapshot) => {
+                activityList = [];
+                snapshot.forEach(docSnap => {
+                    activityList.push({ id: docSnap.id, ...docSnap.data() });
+                });
+                activityList.sort((a, b) => b.time - a.time);
+                initializeAppUI();
+            }, (err) => console.error("Activity error:", err));
+        }
+
+        async function checkUserProfile() {
+            if (!db || !currentUser) return;
+            setTimeout(() => {
+                const exists = membersList.some(m => (m.uid === currentUser.uid || m.id === currentUser.uid));
+                if (!exists) {
+                    window.openProfileModal();
+                }
+            }, 1000);
+        }
+
+        window.saveUserProfile = async function() {
+            const name = document.getElementById('profile-name').value.trim();
+            const email = document.getElementById('profile-email').value.trim();
+            if (!name || !email) {
+                window.showToast("Please enter both name and email.", "error");
+                return;
+            }
+            const profileData = { uid: currentUser.uid, name, email, updatedAt: Date.now() };
+            if (db) {
+                await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'members', currentUser.uid), profileData);
+                await logActivity(`${name} joined the trip!`);
+            } else {
+                membersList.push(profileData);
+                membersMap[currentUser.uid] = profileData;
+            }
+            window.closeProfileModal();
+            window.showToast("Profile saved successfully!", "success");
+            updateAuthStatusDisplay();
+            initializeAppUI();
+        }
+
+        window.openProfileModal = function() {
+            document.getElementById('profile-modal').classList.remove('hidden');
+            const existing = membersMap[currentUser?.uid];
+            if (existing) {
+                document.getElementById('profile-name').value = existing.name || '';
+                document.getElementById('profile-email').value = existing.email || '';
+            }
+        }
+
+        window.closeProfileModal = function() {
+            document.getElementById('profile-modal').classList.add('hidden');
+        }
+
+        window.switchTab = function(tabId) {
+            ['dashboard', 'expenses', 'settlements', 'categories', 'activity'].forEach(t => {
+                const el = document.getElementById(`tab-${t}`);
+                const btn = document.getElementById(`nav-${t}`);
+                if (el) el.classList.add('hidden');
+                if (btn) {
+                    btn.classList.remove('bg-brand-500', 'text-white', 'shadow-md');
+                    btn.classList.add('text-slate-600', 'hover:bg-slate-100');
+                }
+            });
+            const activeEl = document.getElementById(`tab-${tabId}`);
+            const activeBtn = document.getElementById(`nav-${tabId}`);
+            if (activeEl) activeEl.classList.remove('hidden');
+            if (activeBtn) {
+                activeBtn.classList.add('bg-brand-500', 'text-white', 'shadow-md');
+                activeBtn.classList.remove('text-slate-600', 'hover:bg-slate-100');
+            }
+            if (tabId === 'dashboard') {
+                renderCharts();
+            }
+        }
+
+        function initializeAppUI() {
+            renderDashboard();
+            window.renderExpensesList();
+            renderSettlementsList();
+            renderCategoriesList();
+            renderActivityList();
+            populateDropdowns();
+            renderCharts();
+        }
+
+        function calculateBalances() {
+            let memberBalances = {};
+            let totalSpent = 0;
+            let paidByUser = {};
+            let owedByUser = {};
+
+            membersList.forEach(m => {
+                const id = m.uid || m.id;
+                memberBalances[id] = 0;
+                paidByUser[id] = 0;
+                owedByUser[id] = 0;
+            });
+
+            expensesList.forEach(exp => {
+                const amount = parseFloat(exp.amount) || 0;
+                const payer = exp.payerId;
+                totalSpent += amount;
+
+                if (paidByUser[payer] !== undefined) {
+                    paidByUser[payer] += amount;
+                }
+
+                const participants = exp.participants || [];
+                if (participants.length > 0) {
+                    if (exp.splitType === 'unequal' && exp.splitDetails) {
+                        participants.forEach(pId => {
+                            const share = parseFloat(exp.splitDetails[pId]) || 0;
+                            if (owedByUser[pId] !== undefined) {
+                                owedByUser[pId] += share;
+                            }
+                        });
+                    } else {
+                        const share = amount / participants.length;
+                        participants.forEach(pId => {
+                            if (owedByUser[pId] !== undefined) {
+                                owedByUser[pId] += share;
+                            }
+                        });
+                    }
+                }
+            });
+
+            settlementsList.forEach(s => {
+                const amount = parseFloat(s.amount) || 0;
+                const fromUser = s.fromId;
+                const toUser = s.toId;
+
+                if (paidByUser[fromUser] !== undefined) paidByUser[fromUser] += amount;
+                if (owedByUser[toUser] !== undefined) owedByUser[toUser] += amount;
+            });
+
+            membersList.forEach(m => {
+                const id = m.uid || m.id;
+                memberBalances[id] = (paidByUser[id] || 0) - (owedByUser[id] || 0);
+            });
+
+            return { totalSpent, paidByUser, owedByUser, memberBalances };
+        }
+
+        function computeSimplifiedDebts(memberBalances) {
+            let creditors = [];
+            let debtors = [];
+
+            Object.keys(memberBalances).forEach(id => {
+                const bal = memberBalances[id];
+                if (bal > 0.01) creditors.push({ id, amount: bal });
+                else if (bal < -0.01) debtors.push({ id, amount: -bal });
+            });
+
+            creditors.sort((a, b) => b.amount - a.amount);
+            debtors.sort((a, b) => b.amount - a.amount);
+
+            let transactions = [];
+            let cIdx = 0, dIdx = 0;
+
+            while (cIdx < creditors.length && dIdx < debtors.length) {
+                let cred = creditors[cIdx];
+                let deb = debtors[dIdx];
+
+                let settleAmount = Math.min(cred.amount, deb.amount);
+                if (settleAmount > 0.01) {
+                    transactions.push({
+                        from: deb.id,
+                        to: cred.id,
+                        amount: settleAmount
+                    });
+                }
+
+                cred.amount -= settleAmount;
+                deb.amount -= settleAmount;
+
+                if (cred.amount < 0.01) cIdx++;
+                if (deb.amount < 0.01) dIdx++;
+            }
+
+            return transactions;
+        }
+
+        function renderDashboard() {
+            const { totalSpent, paidByUser, memberBalances } = calculateBalances();
+            const curr = currentCurrency;
+
+            document.getElementById('stat-total-spend').innerText = `${curr}${totalSpent.toFixed(2)}`;
+            document.getElementById('stat-total-expenses').innerText = expensesList.length;
+            document.getElementById('stat-total-members').innerText = membersList.length;
+
+            const myId = currentUser?.uid;
+            const myBalance = (myId && memberBalances[myId] !== undefined) ? memberBalances[myId] : 0;
+            const myBalEl = document.getElementById('stat-my-balance');
+            myBalEl.innerText = `${curr}${Math.abs(myBalance).toFixed(2)} ${myBalance >= 0 ? '(You are owed)' : '(You owe)'}`;
+            myBalEl.className = `text-2xl font-bold ${myBalance >= 0 ? 'text-emerald-600' : 'text-coral-600'}`;
+
+            const membersContainer = document.getElementById('dashboard-members-list');
+            membersContainer.innerHTML = '';
+            membersList.forEach(m => {
+                const id = m.uid || m.id;
+                const bal = memberBalances[id] || 0;
+                const paid = paidByUser[id] || 0;
+                const isMe = id === myId;
+
+                const card = document.createElement('div');
+                card.className = `p-4 rounded-xl border ${isMe ? 'border-brand-500 bg-brand-50/50' : 'border-slate-200 bg-white'} shadow-sm flex items-center justify-between`;
+                card.innerHTML = `
+                    <div class="flex items-center space-x-3">
+                        <div class="w-10 h-10 rounded-full bg-gradient-to-tr from-brand-500 to-indigo-400 text-white font-bold flex items-center justify-center shadow">
+                            ${(m.name || 'U').charAt(0).toUpperCase()}
+                        </div>
+                        <div>
+                            <h4 class="font-bold text-slate-800">${m.name} ${isMe ? '<span class="text-xs bg-brand-500 text-white px-2 py-0.5 rounded-full">You</span>' : ''}</h4>
+                            <p class="text-xs text-slate-500">Paid: ${curr}${paid.toFixed(2)}</p>
+                        </div>
+                    </div>
+                    <div class="text-right">
+                        <span class="text-sm font-bold ${bal >= 0 ? 'text-emerald-600' : 'text-coral-600'}">
+                            ${bal >= 0 ? '+' : ''}${curr}${bal.toFixed(2)}
+                        </span>
+                        <p class="text-xs text-slate-400">${bal >= 0 ? 'Gets back' : 'Owes'}</p>
+                    </div>
+                `;
+                membersContainer.appendChild(card);
+            });
+
+            const debtsContainer = document.getElementById('dashboard-debts-list');
+            debtsContainer.innerHTML = '';
+            const simplified = computeSimplifiedDebts(memberBalances);
+
+            if (simplified.length === 0) {
+                debtsContainer.innerHTML = `<div class="p-6 text-center text-slate-400 bg-white rounded-xl border border-slate-200"><i class="fa-solid fa-face-smile text-3xl mb-2 text-emerald-500"></i><p>All settled up! No pending debts.</p></div>`;
+            } else {
+                simplified.forEach(debt => {
+                    const fromName = membersMap[debt.from]?.name || 'Someone';
+                    const toName = membersMap[debt.to]?.name || 'Someone';
+                    const item = document.createElement('div');
+                    item.className = 'p-3 bg-white rounded-xl border border-slate-200 shadow-sm flex items-center justify-between';
+                    item.innerHTML = `
+                        <div class="flex items-center space-x-2 text-sm">
+                            <span class="font-semibold text-slate-800">${fromName}</span>
+                            <i class="fa-solid fa-arrow-right text-slate-400 text-xs"></i>
+                            <span class="font-semibold text-slate-800">${toName}</span>
+                        </div>
+                        <div class="flex items-center space-x-3">
+                            <span class="font-bold text-brand-600">${curr}${debt.amount.toFixed(2)}</span>
+                            <button onclick="openSettleModalWith('${debt.from}', '${debt.to}', ${debt.amount})" class="px-3 py-1 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold rounded-lg shadow transition">
+                                Settle Up
+                            </button>
+                        </div>
+                    `;
+                    debtsContainer.appendChild(item);
+                });
+            }
+        }
+
+        function renderCharts() {
+            const catTotals = {};
+            categoriesList.forEach(c => catTotals[c] = 0);
+            expensesList.forEach(e => {
+                if (catTotals[e.category] !== undefined) {
+                    catTotals[e.category] += parseFloat(e.amount) || 0;
+                } else {
+                    catTotals[e.category] = parseFloat(e.amount) || 0;
+                }
+            });
+
+            const catLabels = Object.keys(catTotals).filter(c => catTotals[c] > 0);
+            const catData = catLabels.map(c => catTotals[c]);
+
+            const ctxCategory = document.getElementById('categoryChart')?.getContext('2d');
+            if (ctxCategory) {
+                if (categoryChartInstance) categoryChartInstance.destroy();
+                categoryChartInstance = new Chart(ctxCategory, {
+                    type: 'doughnut',
+                    data: {
+                        labels: catLabels,
+                        datasets: [{
+                            data: catData,
+                            backgroundColor: ['#6366f1', '#ec4899', '#f59e0b', '#10b981', '#3b82f6', '#8b5cf6', '#14b8a6', '#f43f5e'],
+                            borderWidth: 2,
+                            borderColor: '#ffffff'
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { position: 'bottom', labels: { boxWidth: 12, font: { family: 'Plus Jakarta Sans', size: 11 } } }
+                        }
+                    }
+                });
+            }
+
+            const indTotals = {};
+            membersList.forEach(m => indTotals[m.uid || m.id] = 0);
+            expensesList.forEach(e => {
+                const participants = e.participants || [];
+                if (participants.length > 0) {
+                    const amount = parseFloat(e.amount) || 0;
+                    if (e.splitType === 'unequal' && e.splitDetails) {
+                        participants.forEach(pId => {
+                            if (indTotals[pId] !== undefined) indTotals[pId] += parseFloat(e.splitDetails[pId]) || 0;
+                        });
+                    } else {
+                        const share = amount / participants.length;
+                        participants.forEach(pId => {
+                            if (indTotals[pId] !== undefined) indTotals[pId] += share;
+                        });
+                    }
+                }
+            });
+
+            const indLabels = membersList.map(m => m.name);
+            const indData = membersList.map(m => indTotals[m.uid || m.id] || 0);
+
+            const ctxIndividual = document.getElementById('individualChart')?.getContext('2d');
+            if (ctxIndividual) {
+                if (individualChartInstance) individualChartInstance.destroy();
+                individualChartInstance = new Chart(ctxIndividual, {
+                    type: 'pie',
+                    data: {
+                        labels: indLabels,
+                        datasets: [{
+                            data: indData,
+                            backgroundColor: ['#4f46e5', '#06b6d4', '#f97316', '#84cc16', '#a855f7'],
+                            borderWidth: 2,
+                            borderColor: '#ffffff'
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { position: 'bottom', labels: { boxWidth: 12, font: { family: 'Plus Jakarta Sans', size: 11 } } }
+                        }
+                    }
+                });
+            }
+        }
+
+        window.renderExpensesList = function() {
+            const container = document.getElementById('expenses-container');
+            if (!container) return;
+            const searchVal = document.getElementById('expense-search')?.value.toLowerCase() || '';
+            const filterCat = document.getElementById('expense-filter-cat')?.value || 'all';
+            container.innerHTML = '';
+
+            const filtered = expensesList.filter(e => {
+                const matchesSearch = e.title.toLowerCase().includes(searchVal) || (membersMap[e.payerId]?.name || '').toLowerCase().includes(searchVal);
+                const matchesCat = filterCat === 'all' || e.category === filterCat;
+                return matchesSearch && matchesCat;
+            });
+
+            filtered.sort((a, b) => b.timestamp - a.timestamp);
+
+            if (filtered.length === 0) {
+                container.innerHTML = `<div class="p-8 text-center text-slate-400 bg-white rounded-xl border border-slate-200"><i class="fa-solid fa-receipt text-3xl mb-2"></i><p>No expenses found.</p></div>`;
+                return;
+            }
+
+            filtered.forEach(exp => {
+                const payerName = membersMap[exp.payerId]?.name || 'Unknown';
+                const dateStr = new Date(exp.timestamp || Date.now()).toLocaleDateString();
+                const curr = exp.currency || currentCurrency;
+                const card = document.createElement('div');
+                card.className = 'p-4 bg-white rounded-xl border border-slate-200 shadow-sm flex items-center justify-between hover:border-brand-300 transition';
+                card.innerHTML = `
+                    <div class="flex items-center space-x-4">
+                        <div class="w-12 h-12 rounded-xl bg-brand-50 text-brand-600 flex items-center justify-center font-bold text-lg">
+                            <i class="fa-solid ${getCategoryIcon(exp.category)}"></i>
+                        </div>
+                        <div>
+                            <h4 class="font-bold text-slate-800">${exp.title}</h4>
+                            <p class="text-xs text-slate-500">Paid by <span class="font-semibold text-slate-700">${payerName}</span> • ${dateStr} • <span class="bg-slate-100 px-2 py-0.5 rounded text-slate-600">${exp.category}</span></p>
+                        </div>
+                    </div>
+                    <div class="flex items-center space-x-4">
+                        <span class="text-lg font-bold text-slate-800">${curr}${parseFloat(exp.amount).toFixed(2)}</span>
+                        <div class="flex space-x-1">
+                            <button onclick="editExpense('${exp.id}')" class="p-2 text-slate-400 hover:text-brand-600 transition" title="Edit"><i class="fa-solid fa-pen"></i></button>
+                            <button onclick="deleteExpense('${exp.id}')" class="p-2 text-slate-400 hover:text-coral-600 transition" title="Delete"><i class="fa-solid fa-trash"></i></button>
+                        </div>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        function getCategoryIcon(cat) {
+            switch(cat) {
+                case 'Flights': return 'fa-plane';
+                case 'Hotels': return 'fa-hotel';
+                case 'Cabs': return 'fa-taxi';
+                case 'Experiences': return 'fa-mountain-sun';
+                case 'Food': return 'fa-utensils';
+                default: return 'fa-receipt';
+            }
+        }
+
+        window.openAddExpenseModal = function(editId = null) {
+            const modal = document.getElementById('expense-modal');
+            const titleEl = document.getElementById('expense-modal-title');
+            const form = document.getElementById('expense-form');
+            form.reset();
+            document.getElementById('expense-edit-id').value = '';
+
+            const catSelect = document.getElementById('exp-category');
+            catSelect.innerHTML = '';
+            categoriesList.forEach(c => {
+                catSelect.innerHTML += `<option value="${c}">${c}</option>`;
+            });
+
+            const payerSelect = document.getElementById('exp-payer');
+            payerSelect.innerHTML = '';
+            membersList.forEach(m => {
+                const id = m.uid || m.id;
+                payerSelect.innerHTML += `<option value="${id}">${m.name}</option>`;
+            });
+            if (currentUser) payerSelect.value = currentUser.uid;
+
+            renderParticipantCheckboxes();
+            window.toggleSplitMethod();
+
+            if (editId) {
+                titleEl.innerText = 'Edit Expense';
+                const exp = expensesList.find(e => e.id === editId);
+                if (exp) {
+                    document.getElementById('expense-edit-id').value = exp.id;
+                    document.getElementById('exp-title').value = exp.title;
+                    document.getElementById('exp-amount').value = exp.amount;
+                    document.getElementById('exp-currency').value = exp.currency || '$';
+                    document.getElementById('exp-category').value = exp.category;
+                    document.getElementById('exp-payer').value = exp.payerId;
+                    document.getElementById('exp-split-type').value = exp.splitType || 'equal';
+                    window.toggleSplitMethod();
+
+                    if (exp.participants) {
+                        document.querySelectorAll('.participant-checkbox').forEach(cb => {
+                            cb.checked = exp.participants.includes(cb.value);
+                        });
+                    }
+                    if (exp.splitType === 'unequal' && exp.splitDetails) {
+                        setTimeout(() => {
+                            Object.keys(exp.splitDetails).forEach(pId => {
+                                const input = document.getElementById(`split-input-${pId}`);
+                                if (input) input.value = exp.splitDetails[pId];
+                            });
+                        }, 50);
+                    }
+                }
+            } else {
+                titleEl.innerText = 'Add Expense';
+                document.querySelectorAll('.participant-checkbox').forEach(cb => cb.checked = true);
+                window.updateUnequalInputs();
+            }
+
+            modal.classList.remove('hidden');
+        }
+
+        window.closeExpenseModal = function() {
+            document.getElementById('expense-modal').classList.add('hidden');
+        }
+
+        function renderParticipantCheckboxes() {
+            const container = document.getElementById('participants-checkboxes');
+            container.innerHTML = '';
+            membersList.forEach(m => {
+                const id = m.uid || m.id;
+                const label = document.createElement('label');
+                label.className = 'flex items-center space-x-2 text-sm bg-slate-50 p-2 rounded-lg border border-slate-200 cursor-pointer';
+                label.innerHTML = `
+                    <input type="checkbox" value="${id}" checked onchange="updateUnequalInputs()" class="participant-checkbox rounded text-brand-600 focus:ring-brand-500 w-4 h-4">
+                    <span class="font-medium text-slate-700">${m.name}</span>
+                `;
+                container.appendChild(label);
+            });
+        }
+
+        window.toggleSplitMethod = function() {
+            const type = document.getElementById('exp-split-type').value;
+            const unequalContainer = document.getElementById('unequal-split-container');
+            if (type === 'unequal') {
+                unequalContainer.classList.remove('hidden');
+                window.updateUnequalInputs();
+            } else {
+                unequalContainer.classList.add('hidden');
+            }
+        }
+
+        window.updateUnequalInputs = function() {
+            const container = document.getElementById('unequal-inputs-list');
+            container.innerHTML = '';
+            const checkedParticipants = Array.from(document.querySelectorAll('.participant-checkbox:checked')).map(cb => cb.value);
+            const totalAmount = parseFloat(document.getElementById('exp-amount').value) || 0;
+            const defaultShare = checkedParticipants.length > 0 ? (totalAmount / checkedParticipants.length).toFixed(2) : 0;
+
+            checkedParticipants.forEach(pId => {
+                const member = membersMap[pId] || { name: 'Member' };
+                const div = document.createElement('div');
+                div.className = 'flex items-center justify-between text-sm';
+                div.innerHTML = `
+                    <span class="text-slate-600 font-medium">${member.name}</span>
+                    <div class="flex items-center space-x-1">
+                        <span>$</span>
+                        <input type="number" step="0.01" id="split-input-${pId}" value="${defaultShare}" class="unequal-val-input w-24 p-1 border border-slate-300 rounded text-right text-sm focus:ring-brand-500 focus:border-brand-500">
+                    </div>
+                `;
+                container.appendChild(div);
+            });
+        }
+
+        window.saveExpense = async function(e) {
+            e.preventDefault();
+            const editId = document.getElementById('expense-edit-id').value;
+            const title = document.getElementById('exp-title').value.trim();
+            const amount = parseFloat(document.getElementById('exp-amount').value);
+            const currency = document.getElementById('exp-currency').value;
+            const category = document.getElementById('exp-category').value;
+            const payerId = document.getElementById('exp-payer').value;
+            const splitType = document.getElementById('exp-split-type').value;
+
+            const participants = Array.from(document.querySelectorAll('.participant-checkbox:checked')).map(cb => cb.value);
+
+            if (!title || isNaN(amount) || amount <= 0) {
+                window.showToast("Please provide a valid title and amount.", "error");
+                return;
+            }
+            if (participants.length === 0) {
+                window.showToast("Please select at least one participant.", "error");
+                return;
+            }
+
+            let splitDetails = {};
+            if (splitType === 'unequal') {
+                let sum = 0;
+                participants.forEach(pId => {
+                    const val = parseFloat(document.getElementById(`split-input-${pId}`)?.value) || 0;
+                    splitDetails[pId] = val;
+                    sum += val;
+                });
+                if (Math.abs(sum - amount) > 0.05) {
+                    window.showToast(`Split amounts sum (${sum.toFixed(2)}) must equal total amount (${amount.toFixed(2)}).`, "error");
+                    return;
+                }
+            }
+
+            const expenseData = {
+                title,
+                amount,
+                currency,
+                category,
+                payerId,
+                splitType,
+                participants,
+                splitDetails: splitType === 'unequal' ? splitDetails : null,
+                timestamp: Date.now()
+            };
+
+            if (db) {
+                if (editId) {
+                    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'expenses', editId), expenseData);
+                    await logActivity(`Updated expense '${title}' (${currency}${amount})`);
+                } else {
+                    await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'expenses'), expenseData);
+                    await logActivity(`Added expense '${title}' (${currency}${amount})`);
+                }
+            } else {
+                if (editId) {
+                    const idx = expensesList.findIndex(ex => ex.id === editId);
+                    if (idx !== -1) expensesList[idx] = { id: editId, ...expenseData };
+                } else {
+                    expensesList.push({ id: 'mock-' + Date.now(), ...expenseData });
+                }
+            }
+
+            window.closeExpenseModal();
+            window.showToast("Expense saved successfully!", "success");
+            initializeAppUI();
+        }
+
+        window.editExpense = function(id) {
+            window.openAddExpenseModal(id);
+        }
+
+        window.deleteExpense = async function(id) {
+            if (!confirm("Are you sure you want to delete this expense?")) return;
+            if (db) {
+                await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'expenses', id));
+                await logActivity(`Deleted an expense`);
+            } else {
+                expensesList = expensesList.filter(e => e.id !== id);
+            }
+            window.showToast("Expense deleted.", "success");
+            initializeAppUI();
+        }
+
+        window.openSettleModal = function() {
+            document.getElementById('settle-modal').classList.remove('hidden');
+            populateSettleDropdowns();
+        }
+
+        window.openSettleModalWith = function(fromId, toId, amount) {
+            window.openSettleModal();
+            document.getElementById('settle-from').value = fromId;
+            document.getElementById('settle-to').value = toId;
+            document.getElementById('settle-amount').value = amount.toFixed(2);
+        }
+
+        window.closeSettleModal = function() {
+            document.getElementById('settle-modal').classList.add('hidden');
+        }
+
+        function populateSettleDropdowns() {
+            const fromSelect = document.getElementById('settle-from');
+            const toSelect = document.getElementById('settle-to');
+            fromSelect.innerHTML = '';
+            toSelect.innerHTML = '';
+            membersList.forEach(m => {
+                const id = m.uid || m.id;
+                fromSelect.innerHTML += `<option value="${id}">${m.name}</option>`;
+                toSelect.innerHTML += `<option value="${id}">${m.name}</option>`;
+            });
+            if (membersList.length > 1) {
+                toSelect.selectedIndex = 1;
+            }
+        }
+
+        window.saveSettlement = async function(e) {
+            e.preventDefault();
+            const fromId = document.getElementById('settle-from').value;
+            const toId = document.getElementById('settle-to').value;
+            const amount = parseFloat(document.getElementById('settle-amount').value);
+
+            if (fromId === toId) {
+                window.showToast("Payer and Receiver cannot be the same person.", "error");
+                return;
+            }
+            if (isNaN(amount) || amount <= 0) {
+                window.showToast("Please enter a valid settlement amount.", "error");
+                return;
+            }
+
+            const settlementData = {
+                fromId,
+                toId,
+                amount,
+                currency: currentCurrency,
+                timestamp: Date.now()
+            };
+
+            if (db) {
+                await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'settlements'), settlementData);
+                const fromName = membersMap[fromId]?.name || 'Someone';
+                const toName = membersMap[toId]?.name || 'Someone';
+                await logActivity(`${fromName} paid ${toName} ${currentCurrency}${amount.toFixed(2)} to settle up`);
+            } else {
+                settlementsList.push({ id: 's-' + Date.now(), ...settlementData });
+            }
+
+            window.closeSettleModal();
+            window.showToast("Settlement recorded!", "success");
+            initializeAppUI();
+        }
+
+        function renderSettlementsList() {
+            const container = document.getElementById('settlements-container');
+            if (!container) return;
+            container.innerHTML = '';
+
+            if (settlementsList.length === 0) {
+                container.innerHTML = `<div class="p-8 text-center text-slate-400 bg-white rounded-xl border border-slate-200"><i class="fa-solid fa-handshake text-3xl mb-2"></i><p>No settlements recorded yet.</p></div>`;
+                return;
+            }
+
+            settlementsList.sort((a, b) => b.timestamp - a.timestamp);
+            settlementsList.forEach(s => {
+                const fromName = membersMap[s.fromId]?.name || 'Someone';
+                const toName = membersMap[s.toId]?.name || 'Someone';
+                const dateStr = new Date(s.timestamp || Date.now()).toLocaleDateString();
+                const curr = s.currency || currentCurrency;
+
+                const card = document.createElement('div');
+                card.className = 'p-4 bg-white rounded-xl border border-slate-200 shadow-sm flex items-center justify-between';
+                card.innerHTML = `
+                    <div class="flex items-center space-x-3">
+                        <div class="w-10 h-10 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
+                            <i class="fa-solid fa-check"></i>
+                        </div>
+                        <div>
+                            <h4 class="font-bold text-slate-800"><span class="text-brand-600">${fromName}</span> paid <span class="text-brand-600">${toName}</span></h4>
+                            <p class="text-xs text-slate-500">${dateStr} • Manual Settlement</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center space-x-4">
+                        <span class="text-lg font-bold text-emerald-600">${curr}${parseFloat(s.amount).toFixed(2)}</span>
+                        <button onclick="deleteSettlement('${s.id}')" class="p-2 text-slate-400 hover:text-coral-600 transition"><i class="fa-solid fa-trash"></i></button>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        window.deleteSettlement = async function(id) {
+            if (!confirm("Are you sure you want to delete this settlement record?")) return;
+            if (db) {
+                await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settlements', id));
+                await logActivity(`Deleted a settlement record`);
+            } else {
+                settlementsList = settlementsList.filter(s => s.id !== id);
+            }
+            window.showToast("Settlement deleted.", "success");
+            initializeAppUI();
+        }
+
+        function renderCategoriesList() {
+            const container = document.getElementById('categories-container');
+            if (!container) return;
+            container.innerHTML = '';
+            categoriesList.forEach(cat => {
+                const count = expensesList.filter(e => e.category === cat).length;
+                const card = document.createElement('div');
+                card.className = 'p-4 bg-white rounded-xl border border-slate-200 shadow-sm flex items-center justify-between';
+                card.innerHTML = `
+                    <div class="flex items-center space-x-3">
+                        <div class="w-10 h-10 rounded-xl bg-brand-50 text-brand-600 flex items-center justify-center">
+                            <i class="fa-solid ${getCategoryIcon(cat)}"></i>
+                        </div>
+                        <span class="font-bold text-slate-800">${cat}</span>
+                    </div>
+                    <span class="text-xs bg-slate-100 text-slate-600 px-3 py-1 rounded-full font-semibold">${count} expenses</span>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        window.openCategoryModal = function() {
+            document.getElementById('category-modal').classList.remove('hidden');
+        }
+
+        window.closeCategoryModal = function() {
+            document.getElementById('category-modal').classList.add('hidden');
+        }
+
+        window.saveCategory = async function(e) {
+            e.preventDefault();
+            const name = document.getElementById('new-category-name').value.trim();
+            if (!name) return;
+            if (categoriesList.includes(name)) {
+                window.showToast("Category already exists.", "error");
+                return;
+            }
+
+            if (db) {
+                await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'categories'), { name });
+                await logActivity(`Added custom category '${name}'`);
+            } else {
+                categoriesList.push(name);
+            }
+
+            document.getElementById('new-category-name').value = '';
+            window.closeCategoryModal();
+            window.showToast("Category added successfully!", "success");
+            initializeAppUI();
+        }
+
+        function renderActivityList() {
+            const container = document.getElementById('activity-container');
+            if (!container) return;
+            container.innerHTML = '';
+            if (activityList.length === 0) {
+                container.innerHTML = `<p class="text-slate-400 text-center py-4">No recent activity.</p>`;
+                return;
+            }
+            activityList.forEach(act => {
+                const timeStr = new Date(act.time || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                const item = document.createElement('div');
+                item.className = 'p-3 bg-white rounded-xl border border-slate-200 text-sm flex items-center justify-between';
+                item.innerHTML = `
+                    <span class="text-slate-700">${act.text}</span>
+                    <span class="text-xs text-slate-400">${timeStr}</span>
+                `;
+                container.appendChild(item);
+            });
+        }
+
+        async function logActivity(text) {
+            if (!db) return;
+            try {
+                await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'activity'), { text, time: Date.now() });
+            } catch (e) {
+                console.error("Log activity error:", e);
+            }
+        }
+
+        window.showToast = function(message, type = 'success') {
+            const toast = document.createElement('div');
+            toast.className = `fixed bottom-5 right-5 z-50 px-4 py-3 rounded-xl shadow-lg text-white font-medium text-sm transition transform translate-y-0 ${type === 'error' ? 'bg-coral-600' : 'bg-emerald-600'}`;
+            toast.innerText = message;
+            document.body.appendChild(toast);
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'translate-y-2');
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        function populateDropdowns() {
+            const filterCat = document.getElementById('expense-filter-cat');
+            if (filterCat) {
+                const currentVal = filterCat.value;
+                filterCat.innerHTML = '<option value="all">All Categories</option>';
+                categoriesList.forEach(c => {
+                    filterCat.innerHTML += `<option value="${c}">${c}</option>`;
+                });
+                filterCat.value = currentVal;
+            }
+        }
+    </script>
+
+    <!-- Header Navigation -->
+    <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <!-- Trippy Mascot Avatar -->
+                <div class="relative w-12 h-12 flex items-center justify-center animate-bounce duration-1000">
+                    <!-- Cute Creature Face SVG -->
+                    <svg class="w-10 h-10 drop-shadow-md" viewBox="0 0 24 24" fill="currentColor">
+                        <!-- Backpack Body -->
+                        <path d="M7 6a3 3 0 0 1 3-3h4a3 3 0 0 1 3 3v2h1a2 2 0 0 1 2 2v8a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3v-8a2 2 0 0 1 2-2h1V6z" fill="#6366f1"/>
+                        <!-- Pouch & Details -->
+                        <rect x="8" y="12" width="8" height="7" rx="2" fill="#4f46e5"/>
+                        <circle cx="9" cy="8" r="1.5" fill="#ffffff"/>
+                        <circle cx="15" cy="8" r="1.5" fill="#ffffff"/>
+                        <circle cx="9.5" cy="8" r="0.6" fill="#1e1b4b"/>
+                        <circle cx="14.5" cy="8" r="0.6" fill="#1e1b4b"/>
+                        <path d="M11 10.5q1 1 2 0" stroke="#ffffff" stroke-width="1.2" stroke-linecap="round" fill="none"/>
+                        <!-- Little Cheeks -->
+                        <circle cx="7.5" cy="9.5" r="1" fill="#f43f5e"/>
+                        <circle cx="16.5" cy="9.5" r="1" fill="#f43f5e"/>
+                    </svg>
+                </div>
+                <div>
+                    <h1 class="text-xl font-extrabold bg-gradient-to-r from-brand-600 to-indigo-600 bg-clip-text text-transparent flex items-center gap-1.5">
+                        Trippy <span class="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-bold">Trip Pal</span>
+                    </h1>
+                    <p class="text-xs text-slate-400 font-medium" id="auth-status">Connecting...</p>
+                </div>
+            </div>
+            <div class="flex items-center space-x-3">
+                <button onclick="openProfileModal()" class="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-semibold text-sm transition flex items-center space-x-2">
+                    <i class="fa-solid fa-user-gear"></i>
+                    <span class="hidden sm:inline">My Profile</span>
+                </button>
+                <button onclick="openAddExpenseModal()" class="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl font-bold text-sm shadow-md shadow-brand-500/20 transition flex items-center space-x-2">
+                    <i class="fa-solid fa-plus"></i>
+                    <span>Add Expense</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 flex flex-col">
+        <!-- Navigation Tabs -->
+        <nav class="flex space-x-2 bg-white p-1.5 rounded-2xl border border-slate-200 shadow-sm mb-6 overflow-x-auto">
+            <button onclick="switchTab('dashboard')" id="nav-dashboard" class="flex-1 py-2.5 px-4 rounded-xl font-bold text-sm bg-brand-500 text-white shadow-md transition flex items-center justify-center space-x-2 whitespace-nowrap">
+                <i class="fa-solid fa-chart-pie"></i><span>Dashboard</span>
+            </button>
+            <button onclick="switchTab('expenses')" id="nav-expenses" class="flex-1 py-2.5 px-4 rounded-xl font-bold text-sm text-slate-600 hover:bg-slate-100 transition flex items-center justify-center space-x-2 whitespace-nowrap">
+                <i class="fa-solid fa-list-check"></i><span>Expenses</span>
+            </button>
+            <button onclick="switchTab('settlements')" id="nav-settlements" class="flex-1 py-2.5 px-4 rounded-xl font-bold text-sm text-slate-600 hover:bg-slate-100 transition flex items-center justify-center space-x-2 whitespace-nowrap">
+                <i class="fa-solid fa-handshake"></i><span>Settlements</span>
+            </button>
+            <button onclick="switchTab('categories')" id="nav-categories" class="flex-1 py-2.5 px-4 rounded-xl font-bold text-sm text-slate-600 hover:bg-slate-100 transition flex items-center justify-center space-x-2 whitespace-nowrap">
+                <i class="fa-solid fa-tags"></i><span>Categories</span>
+            </button>
+            <button onclick="switchTab('activity')" id="nav-activity" class="flex-1 py-2.5 px-4 rounded-xl font-bold text-sm text-slate-600 hover:bg-slate-100 transition flex items-center justify-center space-x-2 whitespace-nowrap">
+                <i class="fa-solid fa-clock-rotate-left"></i><span>Activity</span>
+            </button>
+        </nav>
+
+        <!-- Dashboard Section -->
+        <section id="tab-dashboard" class="space-y-6">
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                    <p class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Total Trip Spend</p>
+                    <h3 class="text-2xl font-extrabold text-slate-800" id="stat-total-spend">$0.00</h3>
+                </div>
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                    <p class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Your Net Balance</p>
+                    <h3 id="stat-my-balance" class="text-2xl font-bold text-slate-800">$0.00</h3>
+                </div>
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                    <p class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Total Expenses</p>
+                    <h3 class="text-2xl font-extrabold text-slate-800" id="stat-total-expenses">0</h3>
+                </div>
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                    <p class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Trip Members</p>
+                    <h3 class="text-2xl font-extrabold text-slate-800" id="stat-total-members">0</h3>
+                </div>
+            </div>
+
+            <!-- Charts Grid -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                    <h3 class="font-bold text-slate-800 mb-4 flex items-center justify-between">
+                        <span>Expenses by Category</span>
+                        <i class="fa-solid fa-chart-pie text-brand-500"></i>
+                    </h3>
+                    <div class="relative h-64">
+                        <canvas id="categoryChart"></canvas>
+                    </div>
+                </div>
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                    <h3 class="font-bold text-slate-800 mb-4 flex items-center justify-between">
+                        <span>Spending Share by Individual</span>
+                        <i class="fa-solid fa-chart-simple text-indigo-500"></i>
+                    </h3>
+                    <div class="relative h-64">
+                        <canvas id="individualChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Balances and Debts -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                    <h3 class="font-bold text-slate-800 flex items-center justify-between">
+                        <span>Individual Net Balances</span>
+                        <i class="fa-solid fa-wallet text-emerald-500"></i>
+                    </h3>
+                    <div id="dashboard-members-list" class="space-y-3"></div>
+                </div>
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                    <div class="flex items-center justify-between">
+                        <h3 class="font-bold text-slate-800">Simplified Debt Settlements</h3>
+                        <button onclick="openSettleModal()" class="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-xs font-bold shadow transition">
+                            <i class="fa-solid fa-handshake mr-1"></i> Record Settlement
+                        </button>
+                    </div>
+                    <div id="dashboard-debts-list" class="space-y-3"></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Expenses Section -->
+        <section id="tab-expenses" class="space-y-4 hidden">
+            <div class="flex flex-col sm:flex-row items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+                <div class="flex items-center space-x-3 w-full sm:w-auto flex-1">
+                    <div class="relative w-full sm:w-72">
+                        <i class="fa-solid fa-search absolute left-3 top-3 text-slate-400"></i>
+                        <input type="text" id="expense-search" oninput="renderExpensesList()" placeholder="Search expenses..." class="w-full pl-9 pr-4 py-2 border border-slate-200 rounded-xl text-sm focus:ring-brand-500 focus:border-brand-500">
+                    </div>
+                    <select id="expense-filter-cat" onchange="renderExpensesList()" class="py-2 px-3 border border-slate-200 rounded-xl text-sm bg-white focus:ring-brand-500 focus:border-brand-500">
+                        <option value="all">All Categories</option>
+                    </select>
+                </div>
+                <button onclick="openAddExpenseModal()" class="w-full sm:w-auto px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl font-bold text-sm shadow-md transition flex items-center justify-center space-x-2">
+                    <i class="fa-solid fa-plus"></i><span>Add Expense</span>
+                </button>
+            </div>
+            <div id="expenses-container" class="space-y-3"></div>
+        </section>
+
+        <!-- Settlements Section -->
+        <section id="tab-settlements" class="space-y-4 hidden">
+            <div class="flex items-center justify-between bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+                <div>
+                    <h3 class="font-bold text-slate-800">Trip Settlements & Reconciliations</h3>
+                    <p class="text-xs text-slate-500">Record payments made between individuals to clear balances.</p>
+                </div>
+                <button onclick="openSettleModal()" class="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl font-bold text-sm shadow-md transition flex items-center space-x-2">
+                    <i class="fa-solid fa-handshake"></i><span>Settle Up</span>
+                </button>
+            </div>
+            <div id="settlements-container" class="space-y-3"></div>
+        </section>
+
+        <!-- Categories Section -->
+        <section id="tab-categories" class="space-y-4 hidden">
+            <div class="flex items-center justify-between bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+                <div>
+                    <h3 class="font-bold text-slate-800">Expense Categories</h3>
+                    <p class="text-xs text-slate-500">Default and custom categories for your trip.</p>
+                </div>
+                <button onclick="openCategoryModal()" class="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl font-bold text-sm shadow-md transition flex items-center space-x-2">
+                    <i class="fa-solid fa-plus"></i><span>Add Category</span>
+                </button>
+            </div>
+            <div id="categories-container" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+        </section>
+
+        <!-- Activity Section -->
+        <section id="tab-activity" class="space-y-4 hidden">
+            <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+                <h3 class="font-bold text-slate-800 mb-1">Audit Trail & Recent Activity</h3>
+                <p class="text-xs text-slate-500">Real-time log of actions taken by trip members.</p>
+            </div>
+            <div id="activity-container" class="space-y-2"></div>
+        </section>
+    </main>
+
+    <!-- Add/Edit Expense Modal -->
+    <div id="expense-modal" class="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm hidden flex items-center justify-center p-4">
+        <div class="bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div class="p-6 border-b border-slate-100 flex items-center justify-between">
+                <h3 id="expense-modal-title" class="text-lg font-extrabold text-slate-800">Add Expense</h3>
+                <button onclick="closeExpenseModal()" class="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center transition">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <form id="expense-form" onsubmit="saveExpense(event)" class="p-6 overflow-y-auto space-y-4 custom-scrollbar flex-1">
+                <input type="hidden" id="expense-edit-id">
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Expense Title</label>
+                    <input type="text" id="exp-title" required placeholder="e.g., Dinner at Beach Restaurant" class="w-full px-4 py-2 border border-slate-200 rounded-xl text-sm focus:ring-brand-500 focus:border-brand-500">
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Amount</label>
+                        <div class="flex">
+                            <select id="exp-currency" class="px-3 border border-r-0 border-slate-200 rounded-l-xl text-sm bg-slate-50 focus:ring-brand-500 focus:border-brand-500">
+                                <option value="$">$</option>
+                                <option value="€">€</option>
+                                <option value="₹">₹</option>
+                                <option value="£">£</option>
+                            </select>
+                            <input type="number" step="0.01" id="exp-amount" required placeholder="0.00" oninput="updateUnequalInputs()" class="w-full px-4 py-2 border border-slate-200 rounded-r-xl text-sm focus:ring-brand-500 focus:border-brand-500">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Category</label>
+                        <select id="exp-category" class="w-full px-4 py-2 border border-slate-200 rounded-xl text-sm bg-white focus:ring-brand-500 focus:border-brand-500"></select>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Paid By</label>
+                    <select id="exp-payer" class="w-full px-4 py-2 border border-slate-200 rounded-xl text-sm bg-white focus:ring-brand-500 focus:border-brand-500"></select>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Split Method</label>
+                    <select id="exp-split-type" onchange="toggleSplitMethod()" class="w-full px-4 py-2 border border-slate-200 rounded-xl text-sm bg-white focus:ring-brand-500 focus:border-brand-500">
+                        <option value="equal">Split Equally</option>
+                        <option value="unequal">Split Unequally (Custom Amounts)</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Participants (Involved in this expense)</label>
+                    <div id="participants-checkboxes" class="space-y-2 max-h-40 overflow-y-auto p-2 border border-slate-200 rounded-xl"></div>
+                </div>
+                <div id="unequal-split-container" class="hidden space-y-2 p-3 bg-slate-50 rounded-xl border border-slate-200">
+                    <label class="block text-xs font-bold text-slate-600 uppercase">Enter Unequal Shares</label>
+                    <div id="unequal-inputs-list" class="space-y-2"></div>
+                </div>
+                <div class="pt-4 flex justify-end space-x-3">
+                    <button type="button" onclick="closeExpenseModal()" class="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-sm transition">Cancel</button>
+                    <button type="submit" class="px-5 py-2.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl font-bold text-sm shadow-md transition">Save Expense</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Settlement Modal -->
+    <div id="settle-modal" class="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm hidden flex items-center justify-center p-4">
+        <div class="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden flex flex-col">
+            <div class="p-6 border-b border-slate-100 flex items-center justify-between">
+                <h3 class="text-lg font-extrabold text-slate-800">Record Settlement</h3>
+                <button onclick="closeSettleModal()" class="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center transition">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <form onsubmit="saveSettlement(event)" class="p-6 space-y-4">
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1">From (Payer)</label>
+                    <select id="settle-from" class="w-full px-4 py-2 border border-slate-200 rounded-xl text-sm bg-white focus:ring-brand-500 focus:border-brand-500"></select>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1">To (Receiver)</label>
+                    <select id="settle-to" class="w-full px-4 py-2 border border-slate-200 rounded-xl text-sm bg-white focus:ring-brand-500 focus:border-brand-500"></select>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Amount</label>
+                    <input type="number" step="0.01" id="settle-amount" required placeholder="0.00" class="w-full px-4 py-2 border border-slate-200 rounded-xl text-sm focus:ring-brand-500 focus:border-brand-500">
+                </div>
+                <div class="pt-4 flex justify-end space-x-3">
+                    <button type="button" onclick="closeSettleModal()" class="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-sm transition">Cancel</button>
+                    <button type="submit" class="px-5 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl font-bold text-sm shadow-md transition">Record Payment</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Profile Modal -->
+    <div id="profile-modal" class="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm hidden flex items-center justify-center p-4">
+        <div class="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden flex flex-col">
+            <div class="p-6 border-b border-slate-100 flex items-center justify-between">
+                <h3 class="text-lg font-extrabold text-slate-800">Your Trip Profile</h3>
+                <button onclick="closeProfileModal()" class="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center transition">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <div class="p-6 space-y-4">
+                <p class="text-xs text-slate-500">Enter your name and email address so your group members can identify your expenses and settlements.</p>
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Your Name</label>
+                    <input type="text" id="profile-name" placeholder="e.g., Alice Smith" class="w-full px-4 py-2 border border-slate-200 rounded-xl text-sm focus:ring-brand-500 focus:border-brand-500">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Email Address</label>
+                    <input type="email" id="profile-email" placeholder="e.g., alice@tripsplit.co" class="w-full px-4 py-2 border border-slate-200 rounded-xl text-sm focus:ring-brand-500 focus:border-brand-500">
+                </div>
+                <div class="pt-4 flex justify-end space-x-3">
+                    <button type="button" onclick="closeProfileModal()" class="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-sm transition">Cancel</button>
+                    <button type="button" onclick="saveUserProfile()" class="px-5 py-2.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl font-bold text-sm shadow-md transition">Save Profile</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Category Modal -->
+    <div id="category-modal" class="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm hidden flex items-center justify-center p-4">
+        <div class="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden flex flex-col">
+            <div class="p-6 border-b border-slate-100 flex items-center justify-between">
+                <h3 class="text-lg font-extrabold text-slate-800">Add Custom Category</h3>
+                <button onclick="closeCategoryModal()" class="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center transition">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <form onsubmit="saveCategory(event)" class="p-6 space-y-4">
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Category Name</label>
+                    <input type="text" id="new-category-name" required placeholder="e.g., Shopping, Activities" class="w-full px-4 py-2 border border-slate-200 rounded-xl text-sm focus:ring-brand-500 focus:border-brand-500">
+                </div>
+                <div class="pt-4 flex justify-end space-x-3">
+                    <button type="button" onclick="closeCategoryModal()" class="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-sm transition">Cancel</button>
+                    <button type="submit" class="px-5 py-2.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl font-bold text-sm shadow-md transition">Add Category</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+</body>
+</html>
