@@ -159,33 +159,37 @@
                 <!-- Populated via JS -->
             </div>
 
-            <!-- Categories & Expenses List -->
-            <div class="space-y-4">
-                <div class="flex items-center justify-between">
-                    <h3 class="font-fun text-xl font-bold text-slate-800">Expense Categories</h3>
-                    <button onclick="openAddCategoryModal()" class="text-xs font-semibold text-indigo-600 hover:text-indigo-700 bg-indigo-50 px-3 py-1.5 rounded-xl transition">
-                        + Add Custom Category
-                    </button>
+            <!-- Expenses Feed & Sort Control -->
+            <div class="bg-white rounded-3xl p-6 border border-slate-100 shadow-xs space-y-4">
+                <div class="flex items-center justify-between pb-3 border-b border-slate-50">
+                    <h3 class="font-fun text-xl font-bold text-slate-800">All Expenses</h3>
+                    <div class="flex items-center space-x-2">
+                        <label class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Sort:</label>
+                        <select id="sort-order-select" onchange="changeSortOrder(this.value)" class="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                            <option value="desc">Newest First</option>
+                            <option value="asc">Oldest First</option>
+                        </select>
+                    </div>
                 </div>
-                <div id="categories-container" class="space-y-4">
+                <div id="expenses-feed-container" class="space-y-3">
                     <!-- Populated via JS -->
                 </div>
             </div>
 
             <!-- Recent Activity & Settlements Log -->
             <div class="bg-white rounded-3xl p-6 border border-slate-100 shadow-xs">
-                <h3 class="font-fun text-lg font-bold text-slate-800 mb-4">Recent Activity & Settlements</h3>
+                <h3 class="font-fun text-lg font-bold text-slate-800 mb-4">Recent Settlements</h3>
                 <div id="activity-log" class="space-y-3">
                     <!-- Populated via JS -->
                 </div>
             </div>
         </div>
 
-        <!-- TAB 2: BALANCES & CIRCULAR GRAPH -->
+        <!-- TAB 2: BALANCES & CONTRIBUTIONS CHART -->
         <div id="tab-balances" class="space-y-6 hidden">
             <div class="bg-white rounded-3xl p-6 border border-slate-100 shadow-xs">
-                <h3 class="font-fun text-2xl font-bold text-slate-800 mb-1">Payer & Payee Cost Split</h3>
-                <p class="text-xs text-slate-400 mb-6">Visual breakdown of total spending across categories and individual shares.</p>
+                <h3 class="font-fun text-2xl font-bold text-slate-800 mb-1">Total Contribution Share</h3>
+                <p class="text-xs text-slate-400 mb-6">Visual breakdown of how much each member has contributed to the trip.</p>
                 
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
                     <div class="w-full max-w-xs mx-auto aspect-square relative">
@@ -194,6 +198,15 @@
                     <div class="space-y-4" id="balances-breakdown-list">
                         <!-- Populated via JS -->
                     </div>
+                </div>
+            </div>
+
+            <!-- Individual Member Financial Cards -->
+            <div class="bg-white rounded-3xl p-6 border border-slate-100 shadow-xs space-y-4">
+                <h3 class="font-fun text-xl font-bold text-slate-800 mb-1">Individual Member Breakdown</h3>
+                <p class="text-xs text-slate-400">Detailed financial status for each participant.</p>
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4" id="individual-member-cards">
+                    <!-- Populated via JS -->
                 </div>
             </div>
 
@@ -222,22 +235,14 @@
                 
                 <div>
                     <label class="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">Description</label>
-                    <input type="text" id="expense-title" required placeholder="e.g., Airport Taxi, Dinner at Beach" 
+                    <input type="text" id="expense-title" required placeholder="e.g., Dinner at Beach, Uber" 
                         class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm font-medium">
                 </div>
 
-                <div class="grid grid-cols-2 gap-4">
-                    <div>
-                        <label class="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">Amount (<span class="currency-symbol">$</span>)</label>
-                        <input type="number" step="0.01" id="expense-amount" required placeholder="0.00" oninput="recalculateSplits()"
-                            class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm font-medium">
-                    </div>
-                    <div>
-                        <label class="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">Category</label>
-                        <select id="expense-category" class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm font-medium">
-                            <!-- Populated via JS -->
-                        </select>
-                    </div>
+                <div>
+                    <label class="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">Amount (<span class="currency-symbol">$</span>)</label>
+                    <input type="number" step="0.01" id="expense-amount" required placeholder="0.00" oninput="recalculateSplits()"
+                        class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm font-medium">
                 </div>
 
                 <div>
@@ -313,26 +318,6 @@
         </div>
     </div>
 
-    <!-- MODAL: ADD CUSTOM CATEGORY -->
-    <div id="category-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
-        <div class="bg-white rounded-3xl shadow-2xl max-w-sm w-full p-6 border-4 border-indigo-50 relative">
-            <div class="flex items-center justify-between mb-4">
-                <h3 class="font-fun text-xl font-bold text-indigo-900">Add Category</h3>
-                <button onclick="closeModal('category-modal')" class="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 hover:bg-slate-200 font-bold">✕</button>
-            </div>
-            <form onsubmit="handleSaveCategory(event)" class="space-y-4">
-                <div>
-                    <label class="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">Category Name</label>
-                    <input type="text" id="new-category-name" required placeholder="e.g., Shopping, Activities" 
-                        class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm font-medium">
-                </div>
-                <button type="submit" class="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-fun font-semibold rounded-xl shadow-md transition text-sm">
-                    Add Category
-                </button>
-            </form>
-        </div>
-    </div>
-
     <!-- MODAL: PROFILE SETTINGS -->
     <div id="profile-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
         <div class="bg-white rounded-3xl shadow-2xl max-w-sm w-full p-6 border-4 border-indigo-50 relative">
@@ -356,6 +341,12 @@
                     </select>
                 </div>
                 <div>
+                    <label class="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">Member Color Tag</label>
+                    <div class="grid grid-cols-5 gap-2" id="color-options-container">
+                        <!-- Populated via JS -->
+                    </div>
+                </div>
+                <div>
                     <label class="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">Choose Avatar</label>
                     <div class="grid grid-cols-5 gap-2" id="avatar-options-container">
                         <!-- Populated via JS -->
@@ -370,25 +361,32 @@
 
     <!-- CORE JAVASCRIPT APPLICATION LOGIC -->
     <script>
-        // Default users base structure
+        // Default users base structure with color-blind friendly colors
         const DEFAULT_USERS = [
-            { id: "user1", name: "You", email: ALLOWED_EMAILS[0], avatar: "🐶" },
-            { id: "user2", name: "Alex", email: ALLOWED_EMAILS[1], avatar: "🦄" },
-            { id: "user3", name: "Sam", email: ALLOWED_EMAILS[2], avatar: "🦊" }
+            { id: "user1", name: "You", email: ALLOWED_EMAILS[0], avatar: "🐶", color: "purple" },
+            { id: "user2", name: "Alex", email: ALLOWED_EMAILS[1], avatar: "🦄", color: "blue" },
+            { id: "user3", name: "Sam", email: ALLOWED_EMAILS[2], avatar: "🦊", color: "green" }
         ];
 
-        // Puppy, unicorn, duck, fox, dolphin
         const AVAILABLE_AVATARS = ["🐶", "🦄", "🦆", "🦊", "🐬"];
+        const COLOR_OPTIONS = [
+            { id: "purple", name: "Purple", hex: "#8b5cf6", bg: "bg-purple-100", text: "text-purple-700", border: "border-purple-300" },
+            { id: "pink", name: "Pink", hex: "#ec4899", bg: "bg-pink-100", text: "text-pink-700", border: "border-pink-300" },
+            { id: "blue", name: "Blue", hex: "#3b82f6", bg: "bg-blue-100", text: "text-blue-700", border: "border-blue-300" },
+            { id: "red", name: "Red", hex: "#ef4444", bg: "bg-red-100", text: "text-red-700", border: "border-red-300" },
+            { id: "green", name: "Green", hex: "#10b981", bg: "bg-emerald-100", text: "text-emerald-700", border: "border-emerald-300" }
+        ];
 
         let USERS = JSON.parse(JSON.stringify(DEFAULT_USERS));
         let currentUser = null;
-        let categories = ["Flights", "Hotels", "Cabs", "Experiences", "Food", "Miscellaneous"];
         let expenses = [];
         let settlements = [];
         let currentSplitMode = "equal";
         let expenseChartInstance = null;
         let selectedAvatar = "🐶";
+        let selectedColor = "purple";
         let currentCurrency = "$";
+        let sortOrder = "desc"; // desc = newest first, asc = oldest first
 
         // Init on load
         window.addEventListener('DOMContentLoaded', () => {
@@ -421,7 +419,8 @@
                     id: "user_" + Date.now(),
                     name: emailInput.split('@')[0],
                     email: emailInput,
-                    avatar: "🐶"
+                    avatar: "🐶",
+                    color: "purple"
                 };
                 USERS.push(currentUser);
                 saveData();
@@ -458,23 +457,23 @@
 
         function loadStoredData() {
             const storedExp = localStorage.getItem('trippy_expenses');
-            const storedCat = localStorage.getItem('trippy_categories');
             const storedSets = localStorage.getItem('trippy_settlements');
             const storedUsers = localStorage.getItem('trippy_users');
             const storedCurr = localStorage.getItem('trippy_currency');
+            const storedSort = localStorage.getItem('trippy_sort');
             if (storedExp) expenses = JSON.parse(storedExp);
-            if (storedCat) categories = JSON.parse(storedCat);
             if (storedSets) settlements = JSON.parse(storedSets);
             if (storedUsers) USERS = JSON.parse(storedUsers);
             if (storedCurr) currentCurrency = storedCurr;
+            if (storedSort) sortOrder = storedSort;
         }
 
         function saveData() {
             localStorage.setItem('trippy_expenses', JSON.stringify(expenses));
-            localStorage.setItem('trippy_categories', JSON.stringify(categories));
             localStorage.setItem('trippy_settlements', JSON.stringify(settlements));
             localStorage.setItem('trippy_users', JSON.stringify(USERS));
             localStorage.setItem('trippy_currency', currentCurrency);
+            localStorage.setItem('trippy_sort', sortOrder);
         }
 
         function switchTab(tab) {
@@ -500,9 +499,15 @@
         function renderAll() {
             updateCurrencySymbols();
             renderSummaryCards();
-            renderCategoriesList();
+            renderExpensesFeed();
             renderActivityLog();
             populateDropdowns();
+        }
+
+        function changeSortOrder(val) {
+            sortOrder = val;
+            saveData();
+            renderExpensesFeed();
         }
 
         function calculateNetBalances() {
@@ -583,143 +588,77 @@
             `;
         }
 
-        function renderCategoriesList() {
-            const container = document.getElementById('categories-container');
+        function renderExpensesFeed() {
+            const container = document.getElementById('expenses-feed-container');
+            document.getElementById('sort-order-select').value = sortOrder;
             container.innerHTML = '';
 
-            const defaultCategories = ["Flights", "Hotels", "Cabs", "Experiences", "Food", "Miscellaneous"];
-
-            categories.forEach(cat => {
-                const catExpenses = expenses.filter(e => e.category === cat);
-                const catTotal = catExpenses.reduce((sum, e) => sum + e.amount, 0);
-                const isCustom = !defaultCategories.includes(cat);
-
-                let html = `
-                    <div class="bg-white rounded-3xl p-6 border border-slate-100 shadow-xs">
-                        <div class="flex items-center justify-between mb-4 pb-3 border-b border-slate-50">
-                            <div class="flex items-center space-x-2">
-                                <span class="text-xl">${getCategoryEmoji(cat)}</span>
-                                <h4 class="font-fun text-lg font-bold text-slate-800">${cat}</h4>
-                                ${isCustom ? `<button onclick="deleteCategory('${cat}')" class="text-xs text-rose-400 hover:text-rose-600 ml-2" title="Delete Category">🗑️</button>` : ''}
-                            </div>
-                            <div class="flex items-center space-x-3">
-                                <span class="font-fun font-bold text-slate-700 bg-slate-50 px-3 py-1 rounded-xl text-sm">${currentCurrency}${catTotal.toFixed(2)}</span>
-                                <button onclick="openAddExpenseModalForCategory('${cat}')" class="text-xs font-semibold text-indigo-600 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-3 py-1 rounded-xl transition">
-                                    + Add
-                                </button>
-                            </div>
-                        </div>
-                `;
-
-                if (catExpenses.length === 0) {
-                    html += `<p class="text-xs text-slate-400 italic">No expenses in this category yet.</p>`;
-                } else {
-                    html += `<div class="space-y-3">`;
-                    catExpenses.forEach(exp => {
-                        const payerObj = USERS.find(u => u.id === exp.payer) || USERS[0];
-                        html += `
-                            <div class="flex items-center justify-between bg-slate-50 p-3.5 rounded-2xl border border-slate-100">
-                                <div>
-                                    <h5 class="font-semibold text-sm text-slate-800">${exp.title}</h5>
-                                    <p class="text-xs text-slate-400">Paid by <span class="font-medium text-slate-600">${payerObj.name}</span> • ${exp.date}</p>
-                                </div>
-                                <div class="flex items-center space-x-3">
-                                    <span class="font-bold text-sm text-slate-800">${currentCurrency}${exp.amount.toFixed(2)}</span>
-                                    <div class="flex items-center space-x-1">
-                                        <button onclick="editExpense('${exp.id}')" class="p-1.5 text-slate-400 hover:text-indigo-600 rounded-lg hover:bg-white transition text-xs" title="Edit">✏️</button>
-                                        <button onclick="deleteExpense('${exp.id}')" class="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-white transition text-xs" title="Delete">🗑️</button>
-                                    </div>
-                                </div>
-                            </div>
-                        `;
-                    });
-                    html += `</div>`;
-                }
-
-                html += `</div>`;
-                container.innerHTML += html;
-            });
-        }
-
-        function getCategoryEmoji(cat) {
-            const map = {
-                "Flights": "✈",
-                "Hotels": "🏨",
-                "Cabs": "🚕",
-                "Experiences": "🎟️",
-                "Food": "🍔",
-                "Miscellaneous": "📦"
-            };
-            return map[cat] || "🏷️";
-        }
-
-        function deleteCategory(catName) {
-            const catExpenses = expenses.filter(e => e.category === catName);
-            if (catExpenses.length > 0) {
-                alert(`Cannot delete category "${catName}" because it has ${catExpenses.length} active expense(s). Please delete or move those expenses first.`);
+            if (expenses.length === 0) {
+                container.innerHTML = `<p class="text-xs text-slate-400 italic py-4 text-center">No expenses added yet. Click "+ Add Expense" to start!</p>`;
                 return;
             }
-            if (confirm(`Are you sure you want to delete the category "${catName}"?`)) {
-                categories = categories.filter(c => c !== catName);
-                saveData();
-                renderAll();
-            }
+
+            let sorted = [...expenses].sort((a, b) => {
+                let dateA = new Date(a.date || 0);
+                let dateB = new Date(b.date || 0);
+                return sortOrder === 'asc' ? dateA - dateB : dateB - dateA;
+            });
+
+            sorted.forEach(exp => {
+                const payerObj = USERS.find(u => u.id === exp.payer) || USERS[0];
+                const colorObj = COLOR_OPTIONS.find(c => c.id === payerObj.color) || COLOR_OPTIONS[0];
+
+                container.innerHTML += `
+                    <div class="flex items-center justify-between bg-slate-50 p-4 rounded-2xl border border-slate-100 transition hover:bg-slate-100/60">
+                        <div class="flex items-center space-x-3">
+                            <div class="w-10 h-10 rounded-xl ${colorObj.bg} ${colorObj.text} flex items-center justify-center font-bold text-lg shadow-xs">
+                                ${payerObj.avatar}
+                            </div>
+                            <div>
+                                <h5 class="font-semibold text-sm text-slate-800">${exp.title}</h5>
+                                <p class="text-xs text-slate-400">Paid by <span class="font-medium ${colorObj.text}">${payerObj.name}</span> • ${exp.date}</p>
+                            </div>
+                        </div>
+                        <div class="flex items-center space-x-4">
+                            <span class="font-fun font-bold text-base text-slate-800">${currentCurrency}${exp.amount.toFixed(2)}</span>
+                            <div class="flex items-center space-x-1">
+                                <button onclick="editExpense('${exp.id}')" class="p-1.5 text-slate-400 hover:text-indigo-600 rounded-lg hover:bg-white transition text-xs" title="Edit">✏️</button>
+                                <button onclick="deleteExpense('${exp.id}')" class="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-white transition text-xs" title="Delete">🗑️</button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
         }
 
         function renderActivityLog() {
             const container = document.getElementById('activity-log');
             container.innerHTML = '';
 
-            let combinedLog = [
-                ...expenses.map(e => ({ type: 'expense', date: e.date, data: e })),
-                ...settlements.map(s => ({ type: 'settlement', date: s.date, data: s }))
-            ].sort((a, b) => new Date(b.date) - new Date(a.date));
-
-            if (combinedLog.length === 0) {
-                container.innerHTML = `<p class="text-xs text-slate-400 italic">No activity recorded yet.</p>`;
+            if (settlements.length === 0) {
+                container.innerHTML = `<p class="text-xs text-slate-400 italic">No settlement records yet.</p>`;
                 return;
             }
 
-            combinedLog.forEach(item => {
-                if (item.type === 'expense') {
-                    const exp = item.data;
-                    const payer = USERS.find(u => u.id === exp.payer)?.name || 'Someone';
-                    container.innerHTML += `
-                        <div class="flex items-center justify-between text-xs bg-slate-50 p-3 rounded-xl border border-slate-100">
-                            <div class="flex items-center space-x-2">
-                                <span>💸</span>
-                                <div>
-                                    <span class="font-semibold text-slate-700">${payer}</span> added <span class="font-medium text-slate-800">${exp.title}</span> (${currentCurrency}${exp.amount.toFixed(2)})
-                                    <span class="text-slate-400 block">${exp.date}</span>
-                                </div>
+            settlements.forEach(set => {
+                const fromUser = USERS.find(u => u.id === set.from)?.name;
+                const toUser = USERS.find(u => u.id === set.to)?.name;
+                container.innerHTML += `
+                    <div class="flex items-center justify-between text-xs bg-emerald-50/60 p-3 rounded-xl border border-emerald-100">
+                        <div class="flex items-center space-x-2">
+                            <span>🤝</span>
+                            <div>
+                                <span class="font-semibold text-slate-700">${fromUser}</span> paid <span class="font-semibold text-slate-700">${toUser}</span> <span class="font-bold text-emerald-600">${currentCurrency}${set.amount.toFixed(2)}</span> (Settlement)
+                                <span class="text-slate-400 block">${set.date}</span>
                             </div>
-                            <button onclick="deleteExpense('${exp.id}')" class="text-rose-500 hover:underline">Delete</button>
                         </div>
-                    `;
-                } else {
-                    const set = item.data;
-                    const fromUser = USERS.find(u => u.id === set.from)?.name;
-                    const toUser = USERS.find(u => u.id === set.to)?.name;
-                    container.innerHTML += `
-                        <div class="flex items-center justify-between text-xs bg-emerald-50/60 p-3 rounded-xl border border-emerald-100">
-                            <div class="flex items-center space-x-2">
-                                <span>🤝</span>
-                                <div>
-                                    <span class="font-semibold text-slate-700">${fromUser}</span> paid <span class="font-semibold text-slate-700">${toUser}</span> <span class="font-bold text-emerald-600">${currentCurrency}${set.amount.toFixed(2)}</span> (Settlement)
-                                    <span class="text-slate-400 block">${set.date}</span>
-                                </div>
-                            </div>
-                            <button onclick="deleteSettlement('${set.id}')" class="text-rose-500 hover:underline">Delete</button>
-                        </div>
-                    `;
-                }
+                        <button onclick="deleteSettlement('${set.id}')" class="text-rose-500 hover:underline">Delete</button>
+                    </div>
+                `;
             });
         }
 
         function populateDropdowns() {
-            const catSelect = document.getElementById('expense-category');
-            catSelect.innerHTML = categories.map(c => `<option value="${c}">${c}</option>`).join('');
-
             const payerSelect = document.getElementById('expense-payer');
             payerSelect.innerHTML = USERS.map(u => `<option value="${u.id}">${u.name} (${u.email})</option>`).join('');
 
@@ -740,11 +679,6 @@
             document.getElementById('expense-modal').classList.remove('hidden');
         }
 
-        function openAddExpenseModalForCategory(categoryName) {
-            openAddExpenseModal();
-            document.getElementById('expense-category').value = categoryName;
-        }
-
         function editExpense(id) {
             const exp = expenses.find(e => e.id === id);
             if (!exp) return;
@@ -753,7 +687,6 @@
             document.getElementById('expense-id').value = exp.id;
             document.getElementById('expense-title').value = exp.title;
             document.getElementById('expense-amount').value = exp.amount;
-            document.getElementById('expense-category').value = exp.category;
             document.getElementById('expense-payer').value = exp.payer;
             
             setSplitMode(exp.splitMode || 'equal');
@@ -838,7 +771,6 @@
             const id = document.getElementById('expense-id').value;
             const title = document.getElementById('expense-title').value.trim();
             const amount = parseFloat(document.getElementById('expense-amount').value);
-            const category = document.getElementById('expense-category').value;
             const payer = document.getElementById('expense-payer').value;
 
             let shares = {};
@@ -875,7 +807,6 @@
                 if (exp) {
                     exp.title = title;
                     exp.amount = amount;
-                    exp.category = category;
                     exp.payer = payer;
                     exp.splitMode = currentSplitMode;
                     exp.shares = shares;
@@ -886,7 +817,6 @@
                     id: "exp_" + Date.now(),
                     title,
                     amount,
-                    category,
                     payer,
                     splitMode: currentSplitMode,
                     shares,
@@ -949,28 +879,13 @@
             }
         }
 
-        function openAddCategoryModal() {
-            document.getElementById('new-category-name').value = "";
-            document.getElementById('category-modal').classList.remove('hidden');
-        }
-
-        function handleSaveCategory(e) {
-            e.preventDefault();
-            const name = document.getElementById('new-category-name').value.trim();
-            if (name && !categories.includes(name)) {
-                categories.push(name);
-                saveData();
-                populateDropdowns();
-                renderCategoriesList();
-            }
-            closeModal('category-modal');
-        }
-
         function openProfileModal() {
             document.getElementById('profile-name-input').value = currentUser.name;
             document.getElementById('profile-currency-input').value = currentCurrency;
             selectedAvatar = currentUser.avatar;
+            selectedColor = currentUser.color || "purple";
             renderAvatarPicker();
+            renderColorPicker();
             document.getElementById('profile-modal').classList.remove('hidden');
         }
 
@@ -992,6 +907,24 @@
             renderAvatarPicker();
         }
 
+        function renderColorPicker() {
+            const container = document.getElementById('color-options-container');
+            container.innerHTML = '';
+            COLOR_OPTIONS.forEach(col => {
+                const isSelected = col.id === selectedColor;
+                container.innerHTML += `
+                    <button type="button" onclick="selectColor('${col.id}')" class="h-9 rounded-xl border-2 transition flex items-center justify-center font-bold text-xs ${col.bg} ${col.text} ${isSelected ? 'border-indigo-600 scale-105 shadow-sm' : 'border-slate-200'}">
+                        ${col.name.charAt(0)}
+                    </button>
+                `;
+            });
+        }
+
+        function selectColor(colId) {
+            selectedColor = colId;
+            renderColorPicker();
+        }
+
         function handleSaveProfile(e) {
             e.preventDefault();
             const newName = document.getElementById('profile-name-input').value.trim();
@@ -999,6 +932,7 @@
             if (newName) {
                 currentUser.name = newName;
                 currentUser.avatar = selectedAvatar;
+                currentUser.color = selectedColor;
                 currentCurrency = newCurr;
                 saveData();
                 renderHeaderUser();
@@ -1014,7 +948,7 @@
             summaryText += `--- EXPENSES ---\n`;
             expenses.forEach(e => {
                 const payerObj = USERS.find(u => u.id === e.payer);
-                summaryText += `• ${e.title} (${e.category}): ${currentCurrency}${e.amount.toFixed(2)} paid by ${payerObj?.name}\n`;
+                summaryText += `• ${e.title}: ${currentCurrency}${e.amount.toFixed(2)} paid by ${payerObj?.name}\n`;
             });
             summaryText += `\n--- SETTLEMENTS & BALANCES ---\n`;
             const netBalances = calculateNetBalances();
@@ -1033,6 +967,61 @@
         function renderChartAndBalances() {
             const netBalances = calculateNetBalances();
 
+            // Calculate optimized debts to get exact owe/owed per user
+            let debtors = [];
+            let creditors = [];
+            Object.keys(netBalances).forEach(uid => {
+                let amt = netBalances[uid];
+                if (amt < -0.01) debtors.push({ id: uid, amount: -amt });
+                if (amt > 0.01) creditors.push({ id: uid, amount: amt });
+            });
+
+            let txs = [];
+            let i = 0, j = 0;
+            let dList = debtors.map(d => ({...d}));
+            let cList = creditors.map(c => ({...c}));
+            while (i < dList.length && j < cList.length) {
+                let d = dList[i];
+                let c = cList[j];
+                let amt = Math.min(d.amount, c.amount);
+                txs.push({ from: d.id, to: c.id, amount: amt });
+                d.amount -= amt;
+                c.amount -= amt;
+                if (d.amount < 0.01) i++;
+                if (c.amount < 0.01) j++;
+            }
+
+            // Render individual member financial cards
+            const memberCardsEl = document.getElementById('individual-member-cards');
+            memberCardsEl.innerHTML = '';
+            USERS.forEach(u => {
+                let userPaid = expenses.filter(e => e.payer === u.id).reduce((sum, e) => sum + e.amount, 0);
+                let userOwe = 0;
+                let userOwed = 0;
+                txs.forEach(t => {
+                    if (t.from === u.id) userOwe += t.amount;
+                    if (t.to === u.id) userOwed += t.amount;
+                });
+
+                memberCardsEl.innerHTML += `
+                    <div class="bg-slate-50 p-5 rounded-2xl border border-slate-100 space-y-3">
+                        <div class="flex items-center space-x-2.5">
+                            <span class="text-2xl">${u.avatar}</span>
+                            <div>
+                                <h4 class="font-bold text-sm text-slate-800">${u.name}</h4>
+                                <p class="text-[11px] text-slate-400">${u.email}</p>
+                            </div>
+                        </div>
+                        <div class="space-y-1.5 pt-2 border-t border-slate-200/60 text-xs">
+                            <div class="flex justify-between"><span class="text-slate-500">Paid:</span> <span class="font-semibold text-slate-700">${currentCurrency}${userPaid.toFixed(2)}</span></div>
+                            <div class="flex justify-between"><span class="text-slate-500">You Owe:</span> <span class="font-semibold text-rose-600">${currentCurrency}${userOwe.toFixed(2)}</span></div>
+                            <div class="flex justify-between"><span class="text-slate-500">You Are Owed:</span> <span class="font-semibold text-emerald-600">${currentCurrency}${userOwed.toFixed(2)}</span></div>
+                        </div>
+                    </div>
+                `;
+            });
+
+            // Render balances breakdown list
             const listEl = document.getElementById('balances-breakdown-list');
             listEl.innerHTML = '';
             USERS.forEach(u => {
@@ -1053,32 +1042,9 @@
                 `;
             });
 
+            // Optimized debts list
             const optimizedEl = document.getElementById('optimized-debts-list');
             optimizedEl.innerHTML = '';
-            
-            let debtors = [];
-            let creditors = [];
-            Object.keys(netBalances).forEach(uid => {
-                let amt = netBalances[uid];
-                if (amt < -0.01) debtors.push({ id: uid, amount: -amt });
-                if (amt > 0.01) creditors.push({ id: uid, amount: amt });
-            });
-
-            let txs = [];
-            let i = 0, j = 0;
-            while (i < debtors.length && j < creditors.length) {
-                let d = debtors[i];
-                let c = creditors[j];
-                let amt = Math.min(d.amount, c.amount);
-
-                txs.push({ from: d.id, to: c.id, amount: amt });
-                d.amount -= amt;
-                c.amount -= amt;
-
-                if (d.amount < 0.01) i++;
-                if (c.amount < 0.01) j++;
-            }
-
             if (txs.length === 0) {
                 optimizedEl.innerHTML = `<p class="text-xs text-emerald-600 font-semibold bg-emerald-50 p-3 rounded-xl">✨ All debts are fully settled up!</p>`;
             } else {
@@ -1097,25 +1063,26 @@
                 });
             }
 
-            let categoryTotals = {};
-            categories.forEach(c => categoryTotals[c] = 0);
+            // Render Contribution Circular Graph (Chart.js)
+            let userContributions = {};
+            USERS.forEach(u => userContributions[u.id] = 0);
             expenses.forEach(e => {
-                if (categoryTotals[e.category] !== undefined) {
-                    categoryTotals[e.category] += e.amount;
-                } else {
-                    categoryTotals[e.category] = e.amount;
+                if (userContributions[e.payer] !== undefined) {
+                    userContributions[e.payer] += e.amount;
                 }
             });
 
-            const labels = Object.keys(categoryTotals).filter(c => categoryTotals[c] > 0);
-            const data = labels.map(c => categoryTotals[c]);
+            const labels = USERS.map(u => u.name);
+            const data = USERS.map(u => userContributions[u.id]);
+            const backgroundColors = USERS.map(u => {
+                const c = COLOR_OPTIONS.find(col => col.id === u.color);
+                return c ? c.hex : '#6366f1';
+            });
 
             const ctx = document.getElementById('expenseChart').getContext('2d');
             if (expenseChartInstance) {
                 expenseChartInstance.destroy();
             }
-
-            if (data.length === 0) return;
 
             expenseChartInstance = new Chart(ctx, {
                 type: 'doughnut',
@@ -1123,7 +1090,7 @@
                     labels: labels,
                     datasets: [{
                         data: data,
-                        backgroundColor: ['#6366f1', '#ec4899', '#f59e0b', '#10b981', '#3b82f6', '#8b5cf6', '#ef4444'],
+                        backgroundColor: backgroundColors,
                         borderWidth: 4,
                         borderColor: '#ffffff'
                     }]
