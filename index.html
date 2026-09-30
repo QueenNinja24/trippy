@@ -141,34 +141,30 @@
     </header>
 
     <!-- MAIN APP CONTAINER -->
-    <main class="max-w-5xl mx-auto px-3 py-4 flex-1 w-full pb-20 space-y-4">
+    <main class="max-w-5xl mx-auto px-3 py-3 flex-1 w-full pb-20 space-y-3">
 
-        <!-- TRIP SELECTOR BAR -->
-        <div class="bg-white rounded-3xl p-4 border border-slate-100 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-3">
-            <div class="flex items-center space-x-2.5 w-full sm:w-auto">
-                <span class="text-2xl">🌴</span>
-                <div class="flex-1 sm:flex-none">
-                    <p class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Active Trip</p>
-                    <select id="trip-selector" onchange="switchActiveTrip(this.value)" class="font-fun text-base font-bold text-slate-800 bg-transparent focus:outline-none cursor-pointer">
-                        <!-- Populated via JS -->
-                    </select>
-                </div>
+        <!-- COMPACT SINGLE-LINE TRIP SELECTOR BAR -->
+        <div class="bg-white rounded-2xl px-3 py-2 border border-slate-100 shadow-xs flex items-center justify-between gap-2">
+            <div class="min-w-0 flex-1 flex items-center">
+                <select id="trip-selector" onchange="switchActiveTrip(this.value)" class="font-fun text-sm sm:text-base font-bold text-slate-800 bg-transparent focus:outline-none cursor-pointer truncate w-full">
+                    <!-- Populated via JS -->
+                </select>
             </div>
-            <div class="flex items-center gap-2 w-full sm:w-auto">
-                <button onclick="openNewTripModal()" class="flex-1 sm:flex-none px-3.5 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-semibold rounded-xl text-xs transition">
+            <div class="flex items-center space-x-1.5 shrink-0">
+                <button onclick="openNewTripModal()" class="px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-semibold rounded-xl text-xs transition whitespace-nowrap">
                     + New Trip
                 </button>
-                <button onclick="openRenameTripModal()" class="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl text-xs transition">
-                    ✏️ Rename
+                <button onclick="openRenameTripModal()" class="w-7 h-7 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs transition flex items-center justify-center" title="Rename Trip">
+                    ✏️
                 </button>
             </div>
         </div>
 
         <!-- TAB 1: EXPENSES & SETTLEMENTS -->
-        <div id="tab-expenses" class="space-y-4">
+        <div id="tab-expenses" class="space-y-3">
             
             <!-- Quick Action Bar -->
-            <div class="flex flex-col sm:flex-row items-center justify-between gap-3 bg-gradient-to-r from-indigo-500 to-purple-600 p-5 rounded-3xl text-white shadow-xl shadow-indigo-100">
+            <div class="flex flex-col sm:flex-row items-center justify-between gap-3 bg-gradient-to-r from-indigo-500 to-purple-600 p-4 sm:p-5 rounded-3xl text-white shadow-xl shadow-indigo-100">
                 <div>
                     <h2 id="dashboard-trip-title" class="font-fun text-xl font-bold">Trip Dashboard</h2>
                     <p class="text-indigo-100 text-xs mt-0.5">Track and split expenses effortlessly across members.</p>
@@ -581,8 +577,7 @@
                         activeTripId = trips[0].id;
                     }
                 } else {
-                    // Create default trip if none exist
-                    addDoc(collection(db, "trips"), { name: "Our Awesome Trip 🌴" }).then(ref => {
+                    addDoc(collection(db, "trips"), { name: "Our Awesome Trip" }).then(ref => {
                         activeTripId = ref.id;
                     });
                 }
@@ -948,7 +943,6 @@
                 const colorObj = COLOR_OPTIONS.find(c => c.id === payerObj.color) || COLOR_OPTIONS[0];
                 const displayDate = exp.createdAt ? new Date(exp.createdAt).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }) : exp.date;
 
-                // Check authorship: user can only delete/edit if they added it (or if author is not set yet for older records)
                 const isMyExpense = !exp.author || exp.author.toLowerCase() === currentUser.email.toLowerCase();
 
                 let receiptThumbHtml = exp.receiptImage ? `
