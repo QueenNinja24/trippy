@@ -42,7 +42,7 @@
     <script>
         // EDIT THESE 3 EMAILS TO CONTROL WHO CAN ACCESS THIS APP
         const ALLOWED_EMAILS = [
-            "tamseb95@gmail.com",
+            "user1@example.com",
             "user2@example.com",
             "user3@example.com"
         ];
@@ -55,7 +55,6 @@
             <div class="w-20 h-20 bg-indigo-50 rounded-full flex items-center justify-center mx-auto mb-4 shadow-inner trippy-bounce">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" class="w-14 h-14">
                     <circle cx="50" cy="52" r="30" fill="#818cf8"/>
-                    <!-- Fur fluff tufts -->
                     <path d="M 22 45 Q 15 40 25 32 Z" fill="#6366f1"/>
                     <path d="M 78 45 Q 85 40 75 32 Z" fill="#6366f1"/>
                     <circle cx="40" cy="48" r="5" fill="#fff"/>
@@ -153,8 +152,8 @@
                 </div>
             </div>
 
-            <!-- Summary Cards -->
-            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4" id="summary-cards">
+            <!-- Summary Cards (4-column layout) -->
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-4" id="summary-cards">
                 <!-- Populated via JS -->
             </div>
 
@@ -462,23 +461,55 @@
             let myTotalPaid = expenses.filter(e => e.payer === currentUser.id).reduce((sum, e) => sum + e.amount, 0);
             
             const netBalances = calculateNetBalances();
-            const netBalance = netBalances[currentUser.id] || 0;
+
+            // Calculate optimized debt transactions to get exact "You Owe" and "You Are Owed"
+            let debtors = [];
+            let creditors = [];
+            Object.keys(netBalances).forEach(uid => {
+                let amt = netBalances[uid];
+                if (amt < -0.01) debtors.push({ id: uid, amount: -amt });
+                if (amt > 0.01) creditors.push({ id: uid, amount: amt });
+            });
+
+            let txs = [];
+            let i = 0, j = 0;
+            let dList = debtors.map(d => ({...d}));
+            let cList = creditors.map(c => ({...c}));
+            while (i < dList.length && j < cList.length) {
+                let d = dList[i];
+                let c = cList[j];
+                let amt = Math.min(d.amount, c.amount);
+                txs.push({ from: d.id, to: c.id, amount: amt });
+                d.amount -= amt;
+                c.amount -= amt;
+                if (d.amount < 0.01) i++;
+                if (c.amount < 0.01) j++;
+            }
+
+            let totalYouOwe = 0;
+            let totalYouAreOwed = 0;
+            txs.forEach(t => {
+                if (t.from === currentUser.id) totalYouOwe += t.amount;
+                if (t.to === currentUser.id) totalYouAreOwed += t.amount;
+            });
 
             const container = document.getElementById('summary-cards');
             container.innerHTML = `
-                <div class="bg-white p-6 rounded-3xl border border-slate-100 shadow-xs">
-                    <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Total Trip Spent</p>
-                    <h3 class="text-3xl font-fun font-bold text-slate-800 mt-1">$${totalSpent.toFixed(2)}</h3>
+                <div class="bg-white p-5 rounded-3xl border border-slate-100 shadow-xs">
+                    <p class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Total Trip Spent</p>
+                    <h3 class="text-2xl font-fun font-bold text-slate-800 mt-1">$${totalSpent.toFixed(2)}</h3>
                 </div>
-                <div class="bg-white p-6 rounded-3xl border border-slate-100 shadow-xs">
-                    <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider">You Paid</p>
-                    <h3 class="text-3xl font-fun font-bold text-indigo-600 mt-1">$${myTotalPaid.toFixed(2)}</h3>
+                <div class="bg-white p-5 rounded-3xl border border-slate-100 shadow-xs">
+                    <p class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Your Contribution</p>
+                    <h3 class="text-2xl font-fun font-bold text-indigo-600 mt-1">$${myTotalPaid.toFixed(2)}</h3>
                 </div>
-                <div class="bg-white p-6 rounded-3xl border border-slate-100 shadow-xs">
-                    <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Your Net Balance</p>
-                    <h3 class="text-3xl font-fun font-bold ${netBalance >= 0 ? 'text-emerald-600' : 'text-rose-600'} mt-1">
-                        ${netBalance >= 0 ? '+' : ''}$${netBalance.toFixed(2)}
-                    </h3>
+                <div class="bg-white p-5 rounded-3xl border border-slate-100 shadow-xs">
+                    <p class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">You Owe</p>
+                    <h3 class="text-2xl font-fun font-bold text-rose-600 mt-1">$${totalYouOwe.toFixed(2)}</h3>
+                </div>
+                <div class="bg-white p-5 rounded-3xl border border-slate-100 shadow-xs">
+                    <p class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">You Are Owed</p>
+                    <h3 class="text-2xl font-fun font-bold text-emerald-600 mt-1">$${totalYouAreOwed.toFixed(2)}</h3>
                 </div>
             `;
         }
