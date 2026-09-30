@@ -41,7 +41,7 @@
 </head>
 <body class="min-h-screen flex flex-col antialiased">
 
-    <!-- FIREBASE & AUTH CONFIGURATION -->
+   <!-- FIREBASE & AUTH CONFIGURATION -->
     <script>
         // EDIT THESE 3 EMAILS TO CONTROL WHO CAN ACCESS THIS APP
         const ALLOWED_EMAILS = [
@@ -141,7 +141,28 @@
     </header>
 
     <!-- MAIN APP CONTAINER -->
-    <main class="max-w-5xl mx-auto px-3 py-4 flex-1 w-full pb-20">
+    <main class="max-w-5xl mx-auto px-3 py-4 flex-1 w-full pb-20 space-y-4">
+
+        <!-- TRIP SELECTOR BAR -->
+        <div class="bg-white rounded-3xl p-4 border border-slate-100 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div class="flex items-center space-x-2.5 w-full sm:w-auto">
+                <span class="text-2xl">🌴</span>
+                <div class="flex-1 sm:flex-none">
+                    <p class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Active Trip</p>
+                    <select id="trip-selector" onchange="switchActiveTrip(this.value)" class="font-fun text-base font-bold text-slate-800 bg-transparent focus:outline-none cursor-pointer">
+                        <!-- Populated via JS -->
+                    </select>
+                </div>
+            </div>
+            <div class="flex items-center gap-2 w-full sm:w-auto">
+                <button onclick="openNewTripModal()" class="flex-1 sm:flex-none px-3.5 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-semibold rounded-xl text-xs transition">
+                    + New Trip
+                </button>
+                <button onclick="openRenameTripModal()" class="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl text-xs transition">
+                    ✏️ Rename
+                </button>
+            </div>
+        </div>
 
         <!-- TAB 1: EXPENSES & SETTLEMENTS -->
         <div id="tab-expenses" class="space-y-4">
@@ -149,7 +170,7 @@
             <!-- Quick Action Bar -->
             <div class="flex flex-col sm:flex-row items-center justify-between gap-3 bg-gradient-to-r from-indigo-500 to-purple-600 p-5 rounded-3xl text-white shadow-xl shadow-indigo-100">
                 <div>
-                    <h2 class="font-fun text-xl font-bold">Trip Dashboard</h2>
+                    <h2 id="dashboard-trip-title" class="font-fun text-xl font-bold">Trip Dashboard</h2>
                     <p class="text-indigo-100 text-xs mt-0.5">Track and split expenses effortlessly across members.</p>
                 </div>
                 <div class="flex flex-wrap items-center gap-2 w-full sm:w-auto">
@@ -306,12 +327,33 @@
                     </div>
                 </div>
 
+                <!-- Receipt Image Upload -->
+                <div>
+                    <label class="block text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Attach Bill / Receipt Photo (Optional)</label>
+                    <input type="file" id="expense-receipt-file" accept="image/*" onchange="handleReceiptUpload(event)"
+                        class="w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 cursor-pointer">
+                    <input type="hidden" id="expense-receipt-base64">
+                    <div id="receipt-preview-container" class="hidden mt-2 relative inline-block">
+                        <img id="receipt-preview-img" src="" alt="Receipt Preview" class="w-20 h-20 object-cover rounded-xl border border-slate-200 shadow-xs">
+                        <button type="button" onclick="clearReceiptImage()" class="absolute -top-2 -right-2 bg-rose-600 text-white rounded-full w-5 h-5 text-[10px] font-bold flex items-center justify-center shadow-md">✕</button>
+                    </div>
+                </div>
+
                 <div class="pt-2">
                     <button type="submit" class="w-full py-3 bg-indigo-600 hover:bg-indigo-700 active:scale-[0.98] text-white font-fun font-semibold rounded-xl shadow-md transition text-sm">
                         Save Expense 💾
                     </button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <!-- MODAL: LIGHTBOX RECEIPT VIEW -->
+    <div id="receipt-modal" class="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl shadow-2xl max-w-lg w-full p-4 relative text-center">
+            <button onclick="closeModal('receipt-modal')" class="absolute top-4 right-4 w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 font-bold">✕</button>
+            <h3 class="font-fun text-lg font-bold text-slate-800 mb-3">Bill / Receipt</h3>
+            <img id="lightbox-img" src="" alt="Receipt Full" class="max-h-[70vh] mx-auto rounded-2xl border border-slate-200 object-contain">
         </div>
     </div>
 
@@ -346,6 +388,46 @@
                         Confirm Settlement 🤝
                     </button>
                 </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL: NEW TRIP -->
+    <div id="new-trip-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-3">
+        <div class="bg-white rounded-3xl shadow-2xl max-w-sm w-full p-6 border-4 border-indigo-50 relative">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="font-fun text-lg font-bold text-indigo-900">Create New Trip</h3>
+                <button onclick="closeModal('new-trip-modal')" class="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 hover:bg-slate-200 font-bold text-xs">✕</button>
+            </div>
+            <form onsubmit="handleCreateTrip(event)" class="space-y-3.5">
+                <div>
+                    <label class="block text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Trip Name</label>
+                    <input type="text" id="new-trip-name-input" required placeholder="e.g., Goa Getaway 🌴" 
+                        class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm font-medium">
+                </div>
+                <button type="submit" class="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-fun font-semibold rounded-xl shadow-md transition text-sm">
+                    Create Trip ✨
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL: RENAME TRIP -->
+    <div id="rename-trip-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-3">
+        <div class="bg-white rounded-3xl shadow-2xl max-w-sm w-full p-6 border-4 border-indigo-50 relative">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="font-fun text-lg font-bold text-indigo-900">Rename Current Trip</h3>
+                <button onclick="closeModal('rename-trip-modal')" class="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 hover:bg-slate-200 font-bold text-xs">✕</button>
+            </div>
+            <form onsubmit="handleRenameTrip(event)" class="space-y-3.5">
+                <div>
+                    <label class="block text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Trip Name</label>
+                    <input type="text" id="rename-trip-name-input" required 
+                        class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm font-medium">
+                </div>
+                <button type="submit" class="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-fun font-semibold rounded-xl shadow-md transition text-sm">
+                    Save Name 💾
+                </button>
             </form>
         </div>
     </div>
@@ -394,7 +476,7 @@
     <!-- FIREBASE SDK & REAL-TIME SYNC APPLICATION LOGIC -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-        import { getFirestore, collection, addDoc, onSnapshot, doc, deleteDoc, updateDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+        import { getFirestore, collection, addDoc, onSnapshot, doc, deleteDoc, updateDoc, setDoc, getDocs } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
         const DEFAULT_USERS = [
             { id: "user1", name: "You", email: ALLOWED_EMAILS[0], avatar: "🐶", color: "purple" },
@@ -415,6 +497,8 @@
         let isFirebaseInitialized = false;
         let USERS = JSON.parse(JSON.stringify(DEFAULT_USERS));
         let currentUser = null;
+        let trips = [{ id: "trip_default", name: "Our Awesome Trip 🌴" }];
+        let activeTripId = "trip_default";
         let expenses = [];
         let settlements = [];
         let currentSplitMode = "equal";
@@ -489,16 +573,36 @@
         }
 
         function setupRealtimeListeners() {
+            // Trips Listener
+            onSnapshot(collection(db, "trips"), (snapshot) => {
+                if (!snapshot.empty) {
+                    trips = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    if (!trips.find(t => t.id === activeTripId)) {
+                        activeTripId = trips[0].id;
+                    }
+                } else {
+                    // Create default trip if none exist
+                    addDoc(collection(db, "trips"), { name: "Our Awesome Trip 🌴" }).then(ref => {
+                        activeTripId = ref.id;
+                    });
+                }
+                renderTripSelector();
+                renderAll();
+            });
+
+            // Expenses Listener
             onSnapshot(collection(db, "expenses"), (snapshot) => {
                 expenses = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                 renderAll();
             });
 
+            // Settlements Listener
             onSnapshot(collection(db, "settlements"), (snapshot) => {
                 settlements = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                 renderAll();
             });
 
+            // Users Listener
             onSnapshot(collection(db, "users"), (snapshot) => {
                 snapshot.docs.forEach(doc => {
                     const data = doc.data();
@@ -517,28 +621,36 @@
                 renderAll();
             });
 
+            // Settings Listener
             onSnapshot(doc(db, "settings", "config"), (docSnap) => {
                 if (docSnap.exists()) {
                     const data = docSnap.data();
                     if (data.currency) currentCurrency = data.currency;
                     if (data.sortOrder) sortOrder = data.sortOrder;
+                    if (data.activeTripId) activeTripId = data.activeTripId;
                     updateCurrencySymbols();
+                    renderTripSelector();
                     renderAll();
                 }
             });
         }
 
         function loadLocalFallbackData() {
+            const storedTrips = localStorage.getItem('trippy_trips');
+            const storedActiveTrip = localStorage.getItem('trippy_active_trip');
             const storedExp = localStorage.getItem('trippy_expenses');
             const storedSets = localStorage.getItem('trippy_settlements');
             const storedUsers = localStorage.getItem('trippy_users');
             const storedCurr = localStorage.getItem('trippy_currency');
             const storedSort = localStorage.getItem('trippy_sort');
+            if (storedTrips) trips = JSON.parse(storedTrips);
+            if (storedActiveTrip) activeTripId = storedActiveTrip;
             if (storedExp) expenses = JSON.parse(storedExp);
             if (storedSets) settlements = JSON.parse(storedSets);
             if (storedUsers) USERS = JSON.parse(storedUsers);
             if (storedCurr) currentCurrency = storedCurr;
             if (storedSort) sortOrder = storedSort;
+            renderTripSelector();
         }
 
         async function saveData(type, dataItem, docId = null) {
@@ -549,23 +661,93 @@
                         else await addDoc(collection(db, "expenses"), dataItem);
                     } else if (type === 'settlement') {
                         await addDoc(collection(db, "settlements"), dataItem);
+                    } else if (type === 'trip') {
+                        if (docId) await updateDoc(doc(db, "trips", docId), dataItem);
+                        else await addDoc(collection(db, "trips"), dataItem);
                     } else if (type === 'user') {
                         await setDoc(doc(db, "users", currentUser.email), dataItem, { merge: true });
                     } else if (type === 'settings') {
-                        await setDoc(doc(db, "settings", "config"), { currency: currentCurrency, sortOrder }, { merge: true });
+                        await setDoc(doc(db, "settings", "config"), { currency: currentCurrency, sortOrder, activeTripId }, { merge: true });
                     }
                 } catch (err) {
                     console.error("Cloud sync error:", err);
                 }
             } else {
+                localStorage.setItem('trippy_trips', JSON.stringify(trips));
+                localStorage.setItem('trippy_active_trip', activeTripId);
                 localStorage.setItem('trippy_expenses', JSON.stringify(expenses));
                 localStorage.setItem('trippy_settlements', JSON.stringify(settlements));
                 localStorage.setItem('trippy_users', JSON.stringify(USERS));
                 localStorage.setItem('trippy_currency', currentCurrency);
                 localStorage.setItem('trippy_sort', sortOrder);
+                renderTripSelector();
                 renderAll();
             }
         }
+
+        window.renderTripSelector = function() {
+            const selector = document.getElementById('trip-selector');
+            selector.innerHTML = trips.map(t => `<option value="${t.id}" ${t.id === activeTripId ? 'selected' : ''}>${t.name}</option>`).join('');
+            const activeObj = trips.find(t => t.id === activeTripId);
+            if (activeObj) {
+                document.getElementById('dashboard-trip-title').textContent = activeObj.name;
+            }
+        };
+
+        window.switchActiveTrip = function(tripId) {
+            activeTripId = tripId;
+            saveData('settings');
+            renderTripSelector();
+            renderAll();
+        };
+
+        window.openNewTripModal = function() {
+            document.getElementById('new-trip-name-input').value = "";
+            document.getElementById('new-trip-modal').classList.remove('hidden');
+        };
+
+        window.handleCreateTrip = async function(e) {
+            e.preventDefault();
+            const name = document.getElementById('new-trip-name-input').value.trim();
+            if (!name) return;
+
+            const newTrip = { name };
+            if (isFirebaseInitialized) {
+                const ref = await addDoc(collection(db, "trips"), newTrip);
+                activeTripId = ref.id;
+                await saveData('settings');
+            } else {
+                const newId = "trip_" + Date.now();
+                trips.push({ id: newId, name });
+                activeTripId = newId;
+                saveData('trip', null);
+            }
+            closeModal('new-trip-modal');
+            renderTripSelector();
+            renderAll();
+        };
+
+        window.openRenameTripModal = function() {
+            const activeObj = trips.find(t => t.id === activeTripId);
+            document.getElementById('rename-trip-name-input').value = activeObj ? activeObj.name : "";
+            document.getElementById('rename-trip-modal').classList.remove('hidden');
+        };
+
+        window.handleRenameTrip = async function(e) {
+            e.preventDefault();
+            const name = document.getElementById('rename-trip-name-input').value.trim();
+            if (!name) return;
+
+            if (isFirebaseInitialized) {
+                await updateDoc(doc(db, "trips", activeTripId), { name });
+            } else {
+                const t = trips.find(tr => tr.id === activeTripId);
+                if (t) t.name = name;
+                saveData('trip', null);
+            }
+            closeModal('rename-trip-modal');
+            renderTripSelector();
+        };
 
         window.renderHeaderUser = function() {
             if (!currentUser) return;
@@ -618,7 +800,10 @@
             let netBalances = {};
             USERS.forEach(u => netBalances[u.id] = 0);
 
-            expenses.forEach(e => {
+            const tripExpenses = expenses.filter(e => e.tripId === activeTripId || (!e.tripId && activeTripId === trips[0]?.id));
+            const tripSettlements = settlements.filter(s => s.tripId === activeTripId || (!s.tripId && activeTripId === trips[0]?.id));
+
+            tripExpenses.forEach(e => {
                 netBalances[e.payer] += e.amount;
                 if (e.shares) {
                     Object.keys(e.shares).forEach(uid => {
@@ -627,7 +812,7 @@
                 }
             });
 
-            settlements.forEach(s => {
+            tripSettlements.forEach(s => {
                 netBalances[s.from] += s.amount;
                 netBalances[s.to] -= s.amount;
             });
@@ -663,8 +848,9 @@
         }
 
         function renderSummaryCards() {
-            let totalSpent = expenses.reduce((sum, e) => sum + e.amount, 0);
-            let myTotalPaid = expenses.filter(e => e.payer === currentUser.id).reduce((sum, e) => sum + e.amount, 0);
+            const tripExpenses = expenses.filter(e => e.tripId === activeTripId || (!e.tripId && activeTripId === trips[0]?.id));
+            let totalSpent = tripExpenses.reduce((sum, e) => sum + e.amount, 0);
+            let myTotalPaid = tripExpenses.filter(e => e.payer === currentUser.id).reduce((sum, e) => sum + e.amount, 0);
             
             const txs = getOptimizedDebts();
             let totalYouOwe = 0;
@@ -715,7 +901,7 @@
                         <div class="flex items-center space-x-2">
                             <span class="text-lg">💸</span>
                             <div>
-                                <span class="font-semibold text-slate-800">You owe</span> <span class="font-bold text-rose-700">${receiver?.name}</span> (${receiver?.email})
+                                <span class="font-semibold text-slate-800">You owe</span> <span class="font-bold text-rose-700">${receiver?.name}</span>
                             </div>
                         </div>
                         <span class="font-bold text-rose-600 text-sm">${currentCurrency}${t.amount.toFixed(2)}</span>
@@ -730,7 +916,7 @@
                         <div class="flex items-center space-x-2">
                             <span class="text-lg">💰</span>
                             <div>
-                                <span class="font-bold text-emerald-700">${debtor?.name}</span> <span class="font-semibold text-slate-800">owes you</span> (${debtor?.email})
+                                <span class="font-bold text-emerald-700">${debtor?.name}</span> <span class="font-semibold text-slate-800">owes you</span>
                             </div>
                         </div>
                         <span class="font-bold text-emerald-600 text-sm">${currentCurrency}${t.amount.toFixed(2)}</span>
@@ -744,12 +930,14 @@
             document.getElementById('sort-order-select').value = sortOrder;
             container.innerHTML = '';
 
-            if (expenses.length === 0) {
+            const tripExpenses = expenses.filter(e => e.tripId === activeTripId || (!e.tripId && activeTripId === trips[0]?.id));
+
+            if (tripExpenses.length === 0) {
                 container.innerHTML = `<p class="text-xs text-slate-400 italic py-4 text-center">No expenses added yet. Click "+ Add" to start!</p>`;
                 return;
             }
 
-            let sorted = [...expenses].sort((a, b) => {
+            let sorted = [...tripExpenses].sort((a, b) => {
                 let timeA = new Date(a.createdAt || a.date || 0).getTime();
                 let timeB = new Date(b.createdAt || b.date || 0).getTime();
                 return sortOrder === 'asc' ? timeA - timeB : timeB - timeA;
@@ -759,6 +947,15 @@
                 const payerObj = USERS.find(u => u.id === exp.payer) || USERS[0];
                 const colorObj = COLOR_OPTIONS.find(c => c.id === payerObj.color) || COLOR_OPTIONS[0];
                 const displayDate = exp.createdAt ? new Date(exp.createdAt).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }) : exp.date;
+
+                // Check authorship: user can only delete/edit if they added it (or if author is not set yet for older records)
+                const isMyExpense = !exp.author || exp.author.toLowerCase() === currentUser.email.toLowerCase();
+
+                let receiptThumbHtml = exp.receiptImage ? `
+                    <button onclick="openReceiptLightbox('${exp.receiptImage}')" class="shrink-0 ml-2" title="View Receipt">
+                        <img src="${exp.receiptImage}" class="w-8 h-8 rounded-lg object-cover border border-slate-200 hover:scale-105 transition" />
+                    </button>
+                ` : '';
 
                 container.innerHTML += `
                     <div class="flex items-center justify-between bg-slate-50 p-3.5 rounded-2xl border border-slate-100 transition hover:bg-slate-100/60 gap-2">
@@ -772,10 +969,13 @@
                             </div>
                         </div>
                         <div class="flex items-center space-x-2 shrink-0">
+                            ${receiptThumbHtml}
                             <span class="font-fun font-bold text-sm sm:text-base text-slate-800">${currentCurrency}${exp.amount.toFixed(2)}</span>
                             <div class="flex items-center space-x-0.5">
-                                <button onclick="editExpense('${exp.id}')" class="p-1 text-slate-400 hover:text-indigo-600 rounded-lg hover:bg-white transition text-xs" title="Edit">✏️</button>
-                                <button onclick="deleteExpense('${exp.id}')" class="p-1 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-white transition text-xs" title="Delete">🗑️</button>
+                                ${isMyExpense ? `
+                                    <button onclick="editExpense('${exp.id}')" class="p-1 text-slate-400 hover:text-indigo-600 rounded-lg hover:bg-white transition text-xs" title="Edit">✏️</button>
+                                    <button onclick="deleteExpense('${exp.id}')" class="p-1 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-white transition text-xs" title="Delete">🗑️</button>
+                                ` : `<span class="text-[10px] text-slate-400 italic px-1" title="Added by ${exp.author || 'another user'}">🔒</span>`}
                             </div>
                         </div>
                     </div>
@@ -783,13 +983,21 @@
             });
         }
 
+        window.openReceiptLightbox = function(base64Img) {
+            document.getElementById('lightbox-img').src = base64Img;
+            document.getElementById('receipt-modal').classList.remove('hidden');
+        };
+
         function renderActivityLog() {
             const container = document.getElementById('activity-log');
             container.innerHTML = '';
 
+            const tripExpenses = expenses.filter(e => e.tripId === activeTripId || (!e.tripId && activeTripId === trips[0]?.id));
+            const tripSettlements = settlements.filter(s => s.tripId === activeTripId || (!s.tripId && activeTripId === trips[0]?.id));
+
             let combinedLog = [
-                ...expenses.map(e => ({ type: 'expense', time: new Date(e.createdAt || e.date || 0).getTime(), data: e })),
-                ...settlements.map(s => ({ type: 'settlement', time: new Date(s.createdAt || s.date || 0).getTime(), data: s }))
+                ...tripExpenses.map(e => ({ type: 'expense', time: new Date(e.createdAt || e.date || 0).getTime(), data: e })),
+                ...tripSettlements.map(s => ({ type: 'settlement', time: new Date(s.createdAt || s.date || 0).getTime(), data: s }))
             ].sort((a, b) => b.time - a.time);
 
             if (combinedLog.length === 0) {
@@ -802,6 +1010,8 @@
                     const exp = item.data;
                     const payer = USERS.find(u => u.id === exp.payer)?.name || 'Someone';
                     const timeStr = exp.createdAt ? new Date(exp.createdAt).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }) : exp.date;
+                    const isMyItem = !exp.author || exp.author.toLowerCase() === currentUser.email.toLowerCase();
+
                     container.innerHTML += `
                         <div class="flex items-center justify-between text-xs bg-slate-50 p-3 rounded-xl border border-slate-100 gap-2">
                             <div class="flex items-center space-x-2 min-w-0">
@@ -811,7 +1021,7 @@
                                     <span class="text-slate-400 block text-[10px]">${timeStr}</span>
                                 </div>
                             </div>
-                            <button onclick="deleteExpense('${exp.id}')" class="text-rose-500 hover:underline shrink-0 text-[11px]">Delete</button>
+                            ${isMyItem ? `<button onclick="deleteExpense('${exp.id}')" class="text-rose-500 hover:underline shrink-0 text-[11px]">Delete</button>` : ''}
                         </div>
                     `;
                 } else {
@@ -819,6 +1029,8 @@
                     const fromUser = USERS.find(u => u.id === set.from)?.name;
                     const toUser = USERS.find(u => u.id === set.to)?.name;
                     const timeStr = set.createdAt ? new Date(set.createdAt).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }) : set.date;
+                    const isMyItem = !set.author || set.author.toLowerCase() === currentUser.email.toLowerCase();
+
                     container.innerHTML += `
                         <div class="flex items-center justify-between text-xs bg-emerald-50/60 p-3 rounded-xl border border-emerald-100 gap-2">
                             <div class="flex items-center space-x-2 min-w-0">
@@ -828,7 +1040,7 @@
                                     <span class="text-slate-400 block text-[10px]">${timeStr}</span>
                                 </div>
                             </div>
-                            <button onclick="deleteSettlement('${set.id}')" class="text-rose-500 hover:underline shrink-0 text-[11px]">Delete</button>
+                            ${isMyItem ? `<button onclick="deleteSettlement('${set.id}')" class="text-rose-500 hover:underline shrink-0 text-[11px]">Delete</button>` : ''}
                         </div>
                     `;
                 }
@@ -852,8 +1064,30 @@
             document.getElementById('expense-title').value = "";
             document.getElementById('expense-amount').value = "";
             document.getElementById('expense-payer').value = currentUser.id;
+            document.getElementById('expense-receipt-file').value = "";
+            document.getElementById('expense-receipt-base64').value = "";
+            document.getElementById('receipt-preview-container').classList.add('hidden');
             setSplitMode('equal');
             document.getElementById('expense-modal').classList.remove('hidden');
+        };
+
+        window.handleReceiptUpload = function(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const base64String = e.target.result;
+                document.getElementById('expense-receipt-base64').value = base64String;
+                document.getElementById('receipt-preview-img').src = base64String;
+                document.getElementById('receipt-preview-container').classList.remove('hidden');
+            };
+            reader.readAsDataURL(file);
+        };
+
+        window.clearReceiptImage = function() {
+            document.getElementById('expense-receipt-file').value = "";
+            document.getElementById('expense-receipt-base64').value = "";
+            document.getElementById('receipt-preview-container').classList.add('hidden');
         };
 
         window.editExpense = function(id) {
@@ -866,6 +1100,15 @@
             document.getElementById('expense-amount').value = exp.amount;
             document.getElementById('expense-payer').value = exp.payer;
             
+            const receiptBase64 = exp.receiptImage || "";
+            document.getElementById('expense-receipt-base64').value = receiptBase64;
+            if (receiptBase64) {
+                document.getElementById('receipt-preview-img').src = receiptBase64;
+                document.getElementById('receipt-preview-container').classList.remove('hidden');
+            } else {
+                document.getElementById('receipt-preview-container').classList.add('hidden');
+            }
+
             setSplitMode(exp.splitMode || 'equal');
             
             if (exp.splitMode !== 'equal' && exp.shares) {
@@ -949,6 +1192,7 @@
             const title = document.getElementById('expense-title').value.trim();
             const amount = parseFloat(document.getElementById('expense-amount').value);
             const payer = document.getElementById('expense-payer').value;
+            const receiptImage = document.getElementById('expense-receipt-base64').value;
 
             let shares = {};
             let percentages = {};
@@ -981,7 +1225,7 @@
 
             const nowIso = new Date().toISOString();
             if (id && isFirebaseInitialized) {
-                await saveData('expense', { title, amount, payer, splitMode: currentSplitMode, shares, percentages }, id);
+                await saveData('expense', { title, amount, payer, splitMode: currentSplitMode, shares, percentages, receiptImage, tripId: activeTripId }, id);
             } else if (id && !isFirebaseInitialized) {
                 const exp = expenses.find(ex => ex.id === id);
                 if (exp) {
@@ -991,6 +1235,7 @@
                     exp.splitMode = currentSplitMode;
                     exp.shares = shares;
                     exp.percentages = percentages;
+                    exp.receiptImage = receiptImage;
                 }
                 saveData('expense', null);
             } else {
@@ -1001,6 +1246,8 @@
                     splitMode: currentSplitMode,
                     shares,
                     percentages,
+                    receiptImage,
+                    tripId: activeTripId,
                     date: nowIso.split('T')[0],
                     createdAt: nowIso,
                     author: currentUser.email
@@ -1018,6 +1265,11 @@
         };
 
         window.deleteExpense = async function(id) {
+            const exp = expenses.find(e => e.id === id);
+            if (exp && exp.author && exp.author.toLowerCase() !== currentUser.email.toLowerCase()) {
+                alert("You can only delete expenses that you personally added.");
+                return;
+            }
             if (confirm("Are you sure you want to delete this expense?")) {
                 if (isFirebaseInitialized) {
                     await deleteDoc(doc(db, "expenses", id));
@@ -1049,6 +1301,7 @@
                 from,
                 to,
                 amount,
+                tripId: activeTripId,
                 date: nowIso.split('T')[0],
                 createdAt: nowIso,
                 author: currentUser.email
@@ -1066,6 +1319,11 @@
         };
 
         window.deleteSettlement = async function(id) {
+            const set = settlements.find(s => s.id === id);
+            if (set && set.author && set.author.toLowerCase() !== currentUser.email.toLowerCase()) {
+                alert("You can only delete settlements that you personally recorded.");
+                return;
+            }
             if (confirm("Delete this settlement record?")) {
                 if (isFirebaseInitialized) {
                     await deleteDoc(doc(db, "settlements", id));
@@ -1146,15 +1404,17 @@
         };
 
         window.exportSummary = function() {
-            let totalSpent = expenses.reduce((sum, e) => sum + e.amount, 0);
-            let summaryText = `🎒 TRIPPY EXPENSE SUMMARY 🎒\n`;
-            summaryText += `Total Trip Spend: ${currentCurrency}${totalSpent.toFixed(2)}\n\n`;
+            const tripExpenses = expenses.filter(e => e.tripId === activeTripId || (!e.tripId && activeTripId === trips[0]?.id));
+            let totalSpent = tripExpenses.reduce((sum, e) => sum + e.amount, 0);
+            const activeTripObj = trips.find(t => t.id === activeTripId);
+            let summaryText = `🎒 ${activeTripObj ? activeTripObj.name : 'TRIP'} SUMMARY 🎒\n`;
+            summaryText += `Total Spend: ${currentCurrency}${totalSpent.toFixed(2)}\n\n`;
             summaryText += `--- EXPENSES ---\n`;
-            expenses.forEach(e => {
+            tripExpenses.forEach(e => {
                 const payerObj = USERS.find(u => u.id === e.payer);
                 summaryText += `• ${e.title}: ${currentCurrency}${e.amount.toFixed(2)} paid by ${payerObj?.name}\n`;
             });
-            summaryText += `\n--- SETTLEMENTS & BALANCES ---\n`;
+            summaryText += `\n--- BALANCES ---\n`;
             const netBalances = calculateNetBalances();
             USERS.forEach(u => {
                 const bal = netBalances[u.id];
@@ -1172,11 +1432,12 @@
             const netBalances = calculateNetBalances();
             const txs = getOptimizedDebts();
 
-            let totalTripAmount = expenses.reduce((sum, e) => sum + e.amount, 0) || 1;
+            const tripExpenses = expenses.filter(e => e.tripId === activeTripId || (!e.tripId && activeTripId === trips[0]?.id));
+            let totalTripAmount = tripExpenses.reduce((sum, e) => sum + e.amount, 0) || 1;
             const memberCardsEl = document.getElementById('individual-member-cards');
             memberCardsEl.innerHTML = '';
             USERS.forEach(u => {
-                let userPaid = expenses.filter(e => e.payer === u.id).reduce((sum, e) => sum + e.amount, 0);
+                let userPaid = tripExpenses.filter(e => e.payer === u.id).reduce((sum, e) => sum + e.amount, 0);
                 let userOwe = 0;
                 let userOwed = 0;
                 txs.forEach(t => {
@@ -1258,7 +1519,7 @@
 
             let userContributions = {};
             USERS.forEach(u => userContributions[u.id] = 0);
-            expenses.forEach(e => {
+            tripExpenses.forEach(e => {
                 if (userContributions[e.payer] !== undefined) {
                     userContributions[e.payer] += e.amount;
                 }
