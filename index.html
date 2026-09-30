@@ -42,9 +42,9 @@
     <script>
         // EDIT THESE 3 EMAILS TO CONTROL WHO CAN ACCESS THIS APP
         const ALLOWED_EMAILS = [
-            "tamseb95@gmail.com",
-            "karan.tiwari121@gmail.com",
-            "sarthaksingal20@gmail.com"
+            "user1@example.com",
+            "user2@example.com",
+            "user3@example.com"
         ];
     </script>
 
@@ -341,10 +341,7 @@
         // State
         let currentUser = null;
         let categories = ["Flights", "Hotels", "Cabs", "Experiences", "Food", "Miscellaneous"];
-        let expenses = [
-            { id: "exp_1", title: "Flight tickets", category: "Flights", amount: 450.00, payer: "user1", splitMode: "equal", shares: { user1: 150, user2: 150, user3: 150 }, date: "2026-06-01", author: ALLOWED_EMAILS[0] },
-            { id: "exp_2", title: "Hotel booking", category: "Hotels", amount: 300.00, payer: "user2", splitMode: "equal", shares: { user1: 100, user2: 100, user3: 100 }, date: "2026-06-02", author: ALLOWED_EMAILS[1] }
-        ];
+        let expenses = [];
         let settlements = [];
         let splitMode = "equal";
         let expenseChartInstance = null;
@@ -439,19 +436,33 @@
             populateDropdowns();
         }
 
+        function calculateNetBalances() {
+            let netBalances = {};
+            USERS.forEach(u => netBalances[u.id] = 0);
+
+            expenses.forEach(e => {
+                netBalances[e.payer] += e.amount;
+                if (e.shares) {
+                    Object.keys(e.shares).forEach(uid => {
+                        netBalances[uid] -= e.shares[uid];
+                    });
+                }
+            });
+
+            settlements.forEach(s => {
+                netBalances[s.from] += s.amount;
+                netBalances[s.to] -= s.amount;
+            });
+
+            return netBalances;
+        }
+
         function renderSummaryCards() {
             let totalSpent = expenses.reduce((sum, e) => sum + e.amount, 0);
             let myTotalPaid = expenses.filter(e => e.payer === currentUser.id).reduce((sum, e) => sum + e.amount, 0);
             
-            // Calculate my share
-            let myTotalShare = 0;
-            expenses.forEach(e => {
-                if (e.shares && e.shares[currentUser.id]) {
-                    myTotalShare += e.shares[currentUser.id];
-                }
-            });
-
-            const netBalance = myTotalPaid - myTotalShare;
+            const netBalances = calculateNetBalances();
+            const netBalance = netBalances[currentUser.id] || 0;
 
             const container = document.getElementById('summary-cards');
             container.innerHTML = `
@@ -804,23 +815,7 @@
         }
 
         function renderChartAndBalances() {
-            // Calculate balances between users
-            let netBalances = {};
-            USERS.forEach(u => netBalances[u.id] = 0);
-
-            expenses.forEach(e => {
-                netBalances[e.payer] += e.amount;
-                if (e.shares) {
-                    Object.keys(e.shares).forEach(uid => {
-                        netBalances[uid] -= e.shares[uid];
-                    });
-                }
-            });
-
-            settlements.forEach(s => {
-                netBalances[s.from] += s.amount;
-                netBalances[s.to] -= s.amount;
-            });
+            const netBalances = calculateNetBalances();
 
             // Render balances list
             const listEl = document.getElementById('balances-breakdown-list');
